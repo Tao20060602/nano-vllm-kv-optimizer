@@ -20,7 +20,11 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage="https://github.com/GeeeekExplorer/nano-vllm"
+Homepage="https://github.com/Tao20060602/nano-vllm-kv-optimizer"
+Upstream="https://github.com/GeeeekExplorer/nano-vllm"
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
 
 [tool.setuptools.packages.find]
 where = ["."]

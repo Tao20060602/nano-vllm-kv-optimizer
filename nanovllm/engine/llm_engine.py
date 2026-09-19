@@ -10,6 +10,7 @@ from nanovllm.sampling_params import SamplingParams
 from nanovllm.engine.sequence import Sequence
 from nanovllm.engine.scheduler import Scheduler
 from nanovllm.engine.model_runner import ModelRunner
+from nanovllm.metrics import EngineMetrics
 
 
 class LLMEngine:
@@ -32,6 +33,7 @@ class LLMEngine:
         self.tokenizer = AutoTokenizer.from_pretrained(config.model, use_fast=True)
         config.eos = self.tokenizer.eos_token_id
         self.scheduler = Scheduler(config)
+        self.metrics = EngineMetrics()
         atexit.register(self.exit)
 
     def exit(self):
@@ -44,15 +46,31 @@ class LLMEngine:
         if isinstance(prompt, str):
             prompt = self.tokenizer.encode(prompt)
         seq = Sequence(prompt, sampling_params)
+        self.metrics.register_request(seq.seq_id, seq.num_prompt_tokens, perf_counter())
         self.scheduler.add(seq)
+        return seq.seq_id
 
     def step(self):
+        started_at = perf_counter()
         seqs, is_prefill = self.scheduler.schedule()
         num_tokens = sum(seq.num_scheduled_tokens for seq in seqs) if is_prefill else -len(seqs)
         token_ids = self.model_runner.call("run", seqs, is_prefill)
         self.scheduler.postprocess(seqs, token_ids, is_prefill)
+        finished_at = perf_counter()
+        phase = "prefill" if is_prefill else "decode"
+        self.metrics.record_step(phase, len(seqs), abs(num_tokens), finished_at - started_at)
+        for seq in seqs:
+            self.metrics.record_request_progress(
+                seq.seq_id,
+                seq.num_completion_tokens,
+                seq.is_finished,
+                finished_at,
+            )
         outputs = [(seq.seq_id, seq.completion_token_ids) for seq in seqs if seq.is_finished]
         return outputs, num_tokens
+
+    def get_metrics(self) -> dict:
+        return self.metrics.snapshot()
 
     def is_finished(self):
         return self.scheduler.is_finished()
@@ -63,6 +81,7 @@ class LLMEngine:
         sampling_params: SamplingParams | list[SamplingParams],
         use_tqdm: bool = True,
     ) -> list[str]:
+        self.metrics.reset()
         pbar = tqdm(total=len(prompts), desc="Generating", dynamic_ncols=True, disable=not use_tqdm)
         if not isinstance(sampling_params, list):
             sampling_params = [sampling_params] * len(prompts)

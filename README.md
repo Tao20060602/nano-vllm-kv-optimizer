@@ -2,65 +2,110 @@
 <img width="300" src="assets/logo.png">
 </p>
 
-<p align="center">
-<a href="https://trendshift.io/repositories/15323" target="_blank"><img src="https://trendshift.io/api/badge/repositories/15323" alt="GeeeekExplorer%2Fnano-vllm | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
-</p>
+# nano-vLLM KV Optimizer
 
-# Nano-vLLM
+An experimental extension of [GeeeekExplorer/nano-vllm](https://github.com/GeeeekExplorer/nano-vllm) focused on KV-cache-aware scheduling, memory management, and multi-GPU inference optimization.
 
-A lightweight vLLM implementation built from scratch.
+The project keeps nano-vLLM's small, readable codebase while adding the observability and benchmarks needed to evaluate scheduling and KV cache changes rigorously.
 
-## Key Features
+## Project Goals
 
-* 🚀 **Fast offline inference** - Comparable inference speeds to vLLM
-* 📖 **Readable codebase** - Clean implementation in ~ 1,200 lines of Python code
-* ⚡ **Optimization Suite** - Prefix caching, Tensor Parallelism, Torch compilation, CUDA graph, etc.
+- Measure TTFT, TPOT, end-to-end latency, and phase throughput.
+- Build reproducible mixed-workload benchmarks.
+- Implement latency-aware mixed prefill/decode scheduling.
+- Add cost-aware preemption and prefix-cache eviction policies.
+- Explore KV-aware request routing across multiple GPU workers.
+- Profile CUDA kernels, memory traffic, and NCCL communication.
+
+See [the roadmap](docs/ROADMAP.md) for milestones and success criteria.
+
+## Current Status
+
+- [x] Fork baseline pinned to upstream commit `bb823b3`.
+- [x] Request-level TTFT, TPOT, and end-to-end metrics.
+- [x] Step-level prefill/decode throughput metrics.
+- [x] Reproducible baseline benchmark output in JSON and CSV.
+- [ ] Latency-aware mixed prefill/decode scheduler.
+- [ ] Cost-aware preemption.
+- [ ] Prefix-cache LRU/LFU policy and cache telemetry.
+- [ ] Multi-GPU KV-aware request routing.
 
 ## Installation
 
+nano-vLLM requires Linux, an NVIDIA GPU, and Python 3.10–3.12.
+
 ```bash
-pip install git+https://github.com/GeeeekExplorer/nano-vllm.git
+git clone https://github.com/Tao20060602/nano-vllm-kv-optimizer.git
+cd nano-vllm-kv-optimizer
+pip install -e .
 ```
 
-## Model Download
+Download a small Qwen3 checkpoint for development:
 
-To download the model weights manually, use the following command:
 ```bash
-huggingface-cli download --resume-download Qwen/Qwen3-0.6B \
-  --local-dir ~/huggingface/Qwen3-0.6B/ \
-  --local-dir-use-symlinks False
+huggingface-cli download Qwen/Qwen3-0.6B \
+  --local-dir ~/huggingface/Qwen3-0.6B/
 ```
 
 ## Quick Start
 
-See `example.py` for usage. The API mirrors vLLM's interface with minor differences in the `LLM.generate` method:
 ```python
 from nanovllm import LLM, SamplingParams
-llm = LLM("/YOUR/MODEL/PATH", enforce_eager=True, tensor_parallel_size=1)
-sampling_params = SamplingParams(temperature=0.6, max_tokens=256)
-prompts = ["Hello, Nano-vLLM."]
-outputs = llm.generate(prompts, sampling_params)
-outputs[0]["text"]
+
+llm = LLM(
+    "~/huggingface/Qwen3-0.6B",
+    enforce_eager=True,
+    tensor_parallel_size=1,
+)
+
+outputs = llm.generate(
+    ["Explain paged KV cache."],
+    SamplingParams(temperature=0.6, max_tokens=128),
+)
+
+print(outputs[0]["text"])
+print(llm.get_metrics()["summary"])
 ```
 
-## Benchmark
+## Baseline Benchmark
 
-See `bench.py` for benchmark.
+```bash
+python benchmarks/baseline.py \
+  --model ~/huggingface/Qwen3-0.6B \
+  --num-requests 64 \
+  --min-input-length 64 \
+  --max-input-length 512 \
+  --min-output-length 32 \
+  --max-output-length 256 \
+  --output-dir benchmark-results/baseline
+```
 
-**Test Configuration:**
-- Hardware: RTX 4070 Laptop (8GB)
-- Model: Qwen3-0.6B
-- Total Requests: 256 sequences
-- Input Length: Randomly sampled between 100–1024 tokens
-- Output Length: Randomly sampled between 100–1024 tokens
+The benchmark writes:
 
-**Performance Results:**
-| Inference Engine | Output Tokens | Time (s) | Throughput (tokens/s) |
-|----------------|-------------|----------|-----------------------|
-| vLLM           | 133,966     | 98.37    | 1361.84               |
-| Nano-vLLM      | 133,966     | 93.41    | 1434.13               |
+```text
+summary.json       Aggregate TTFT, TPOT, E2E, and throughput
+requests.csv       Per-request latency and token counts
+steps.csv          Per-step phase, batch size, latency, and throughput
+```
 
+Benchmark methodology is documented in [docs/BENCHMARKING.md](docs/BENCHMARKING.md).
 
-## Star History
+## Upstream
 
-[![Star History Chart](https://api.star-history.com/svg?repos=GeeeekExplorer/nano-vllm&type=Date)](https://www.star-history.com/#GeeeekExplorer/nano-vllm&Date)
+This project is based on the MIT-licensed [nano-vLLM](https://github.com/GeeeekExplorer/nano-vllm). The local Git configuration uses:
+
+```text
+origin   https://github.com/Tao20060602/nano-vllm-kv-optimizer.git
+upstream https://github.com/GeeeekExplorer/nano-vllm.git
+```
+
+To sync upstream changes:
+
+```bash
+git fetch upstream
+git rebase upstream/main
+```
+
+## License
+
+MIT. See [LICENSE](LICENSE).
