@@ -83,7 +83,7 @@ class CacheMetrics:
 class StageTimer:
     """Small wall-clock fallback used around CPU-side orchestration.
 
-    CUDA execution timing is handled by ``CudaStageTimer`` in model_runner;
+    CUDA execution timing is handled by ``ModelStageTimer`` in model_runner;
     this class exists for lookup timing, which happens before model execution.
     """
 

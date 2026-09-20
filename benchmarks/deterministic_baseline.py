@@ -23,6 +23,7 @@ def main() -> None:
     )
     parser.add_argument("--output", type=Path, default=Path("benchmarks/results/deterministic_baseline.json"))
     parser.add_argument("--max-tokens", type=int, default=1)
+    parser.add_argument("--enable-cache-metrics", action="store_true")
     args = parser.parse_args()
     if not args.model.is_dir():
         raise SystemExit(f"model directory does not exist: {args.model}")
@@ -34,7 +35,12 @@ def main() -> None:
     # not silently change the baseline input.
     prompt_token_ids = [151644, 872, 198, 151645, 198, 151644, 77091, 198]
     sampling = SamplingParams(temperature=0.0, max_tokens=args.max_tokens, ignore_eos=True)
-    llm = LLM(str(args.model), enforce_eager=True, tensor_parallel_size=1)
+    llm = LLM(
+        str(args.model),
+        enforce_eager=True,
+        tensor_parallel_size=1,
+        enable_cache_metrics=args.enable_cache_metrics,
+    )
     torch.cuda.synchronize()
     start = time.perf_counter()
     outputs = llm.generate([prompt_token_ids], sampling, use_tqdm=False)
@@ -56,6 +62,7 @@ def main() -> None:
         "prompt_token_ids": prompt_token_ids,
         "max_tokens": args.max_tokens,
         "temperature": 0.0,
+        "cache_metrics_enabled": args.enable_cache_metrics,
         "output_token_ids": outputs[0]["token_ids"],
         "elapsed_seconds": elapsed,
         "cuda_device": torch.cuda.get_device_name(),
@@ -68,6 +75,8 @@ def main() -> None:
             "bytes_per_complete_block": block_bytes,
         },
     }
+    if args.enable_cache_metrics:
+        result["cache_metrics"] = llm.get_cache_metrics()
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(result, indent=2))

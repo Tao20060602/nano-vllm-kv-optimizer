@@ -12,7 +12,7 @@
   ],
   "max_tokens": 8,
   "temperature": 0.0,
-  "cache_metrics_enabled": false,
+  "cache_metrics_enabled": true,
   "output_token_ids": [
     151667,
     198,
@@ -23,7 +23,7 @@
     1101,
     4588
   ],
-  "elapsed_seconds": 5.079111816000001,
+  "elapsed_seconds": 4.934492761999991,
   "cuda_device": "NVIDIA GeForce RTX 3080 Laptop GPU",
   "kv_cache": {
     "shape": [
@@ -39,5 +39,24 @@
     "block_size_tokens": 256,
     "num_gpu_blocks": 424,
     "bytes_per_complete_block": 29360128
+  },
+  "cache_metrics": {
+    "requests": 1,
+    "hits": 0,
+    "misses": 1,
+    "gpu_hit_blocks": 0,
+    "cpu_hit_blocks": 0,
+    "reused_tokens": 0,
+    "recomputed_tokens": 8,
+    "lookup_time_ms": 0.008384000011574244,
+    "load_time_ms": 0,
+    "store_time_ms": 0,
+    "prefill_time_ms": 2291.34814453125,
+    "first_token_time_ms": 2689.376713999991,
+    "decode_time_ms": 2199.506452560425,
+    "ttft_ms": 2689.376713999991,
+    "h2d_bytes": 0,
+    "d2h_bytes": 0,
+    "eviction_count": 0
   }
 }

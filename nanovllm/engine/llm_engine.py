@@ -83,6 +83,11 @@ class LLMEngine:
         sampling_params: SamplingParams | list[SamplingParams],
         use_tqdm: bool = True,
     ) -> list[str]:
+        if self.metrics is not None:
+            # Public snapshots describe exactly one generate() call. Keeping a
+            # per-call window avoids mixing cumulative lookup counters with a
+            # TTFT value that is meaningful only for the current request batch.
+            self.reset_cache_metrics()
         pbar = tqdm(total=len(prompts), desc="Generating", dynamic_ncols=True, disable=not use_tqdm)
         if not isinstance(sampling_params, list):
             sampling_params = [sampling_params] * len(prompts)

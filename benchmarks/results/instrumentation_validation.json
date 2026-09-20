@@ -1,0 +1,147 @@
+{
+  "model": "/opt/models/Qwen3-0.6B",
+  "device": "NVIDIA GeForce RTX 3080 Laptop GPU",
+  "block_size": 256,
+  "sampling": {
+    "temperature": 0.0,
+    "max_tokens": 2,
+    "ignore_eos": true
+  },
+  "cases": [
+    {
+      "name": "cold_miss",
+      "prompt_tokens": 600,
+      "output_token_ids": [
+        1018,
+        1019
+      ],
+      "metrics": {
+        "requests": 1,
+        "hits": 0,
+        "misses": 1,
+        "gpu_hit_blocks": 0,
+        "cpu_hit_blocks": 0,
+        "reused_tokens": 0,
+        "recomputed_tokens": 600,
+        "lookup_time_ms": 0.04155700000296747,
+        "load_time_ms": 0,
+        "store_time_ms": 0,
+        "prefill_time_ms": 2284.20751953125,
+        "first_token_time_ms": 2605.881750999998,
+        "decode_time_ms": 2093.568359375,
+        "ttft_ms": 2605.881750999998,
+        "h2d_bytes": 0,
+        "d2h_bytes": 0,
+        "eviction_count": 0
+      }
+    },
+    {
+      "name": "same_prompt_gpu_hit",
+      "prompt_tokens": 600,
+      "output_token_ids": [
+        1018,
+        1019
+      ],
+      "metrics": {
+        "requests": 1,
+        "hits": 1,
+        "misses": 0,
+        "gpu_hit_blocks": 2,
+        "cpu_hit_blocks": 0,
+        "reused_tokens": 512,
+        "recomputed_tokens": 88,
+        "lookup_time_ms": 0.04678599999863309,
+        "load_time_ms": 0,
+        "store_time_ms": 0,
+        "prefill_time_ms": 84.00527954101562,
+        "first_token_time_ms": 85.09373900000128,
+        "decode_time_ms": 36.98166275024414,
+        "ttft_ms": 85.09373900000128,
+        "h2d_bytes": 0,
+        "d2h_bytes": 0,
+        "eviction_count": 0
+      }
+    },
+    {
+      "name": "one_block_partial_hit",
+      "prompt_tokens": 600,
+      "output_token_ids": [
+        3066,
+        3067
+      ],
+      "metrics": {
+        "requests": 1,
+        "hits": 1,
+        "misses": 0,
+        "gpu_hit_blocks": 1,
+        "cpu_hit_blocks": 0,
+        "reused_tokens": 256,
+        "recomputed_tokens": 344,
+        "lookup_time_ms": 0.06224500000229227,
+        "load_time_ms": 0,
+        "store_time_ms": 0,
+        "prefill_time_ms": 67.6454086303711,
+        "first_token_time_ms": 68.94068799999786,
+        "decode_time_ms": 29.256895065307617,
+        "ttft_ms": 68.94068799999786,
+        "h2d_bytes": 0,
+        "d2h_bytes": 0,
+        "eviction_count": 0
+      }
+    },
+    {
+      "name": "non_aligned_300_token_prefix",
+      "prompt_tokens": 600,
+      "output_token_ids": [
+        3066,
+        3067
+      ],
+      "metrics": {
+        "requests": 1,
+        "hits": 1,
+        "misses": 0,
+        "gpu_hit_blocks": 1,
+        "cpu_hit_blocks": 0,
+        "reused_tokens": 256,
+        "recomputed_tokens": 344,
+        "lookup_time_ms": 0.048467999995693845,
+        "load_time_ms": 0,
+        "store_time_ms": 0,
+        "prefill_time_ms": 34.641822814941406,
+        "first_token_time_ms": 35.50470600000466,
+        "decode_time_ms": 27.209375381469727,
+        "ttft_ms": 35.50470600000466,
+        "h2d_bytes": 0,
+        "d2h_bytes": 0,
+        "eviction_count": 0
+      }
+    },
+    {
+      "name": "completely_different_prompt",
+      "prompt_tokens": 600,
+      "output_token_ids": [
+        5019,
+        5020
+      ],
+      "metrics": {
+        "requests": 1,
+        "hits": 0,
+        "misses": 1,
+        "gpu_hit_blocks": 0,
+        "cpu_hit_blocks": 0,
+        "reused_tokens": 0,
+        "recomputed_tokens": 600,
+        "lookup_time_ms": 0.04336699999640814,
+        "load_time_ms": 0,
+        "store_time_ms": 0,
+        "prefill_time_ms": 35.1736946105957,
+        "first_token_time_ms": 36.13967400000462,
+        "decode_time_ms": 28.896928787231445,
+        "ttft_ms": 36.13967400000462,
+        "h2d_bytes": 0,
+        "d2h_bytes": 0,
+        "eviction_count": 0
+      }
+    }
+  ]
+}
