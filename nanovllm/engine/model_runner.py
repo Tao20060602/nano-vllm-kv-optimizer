@@ -121,6 +121,47 @@ class ModelRunner:
         current = torch.cuda.memory_stats()["allocated_bytes.all.current"]
         num_kv_heads = hf_config.num_key_value_heads // self.world_size
         head_dim = getattr(hf_config, "head_dim", hf_config.hidden_size // hf_config.num_attention_heads)
+
+        # ---- M11 sparse: zero physical paged blocks, per-layer CPU history ----
+        if config.enable_sparse_attention:
+            config.num_kvcache_blocks = 0
+            self.kv_cache = torch.empty(
+                2, hf_config.num_hidden_layers, 0, self.block_size,
+                num_kv_heads, head_dim)
+            self.gpu_block_store = None
+            self.cpu_block_store = None
+            self.context_db = None
+            from nanovllm.sparse.engine_runtime import SparseEngineConfig, SparseLayerRuntime
+            sparse_cfg = SparseEngineConfig(
+                selector=config.sparse_selector,
+                rbs=config.sparse_retrieval_block_size,
+                recent_tokens=config.sparse_recent_tokens,
+                first_tokens=config.sparse_first_tokens,
+                top_k=config.sparse_top_k,
+                beta_raw=config.sparse_beta_raw,
+                num_representatives=config.sparse_num_representatives,
+                graph_degree=config.sparse_graph_degree,
+                graph_l0=config.sparse_graph_l0,
+                graph_max_scored=config.sparse_graph_max_scored_blocks,
+                graph_projection_topk=config.sparse_graph_projection_topk,
+                query_samples=config.sparse_query_samples,
+                num_heads=hf_config.num_attention_heads,
+                num_kv_heads=num_kv_heads,
+                head_dim=head_dim,
+                dtype=hf_config.dtype,
+                scale=head_dim ** -0.5,
+                max_model_len=config.max_model_len,
+            )
+            layer_id = 0
+            for module in self.model.modules():
+                if hasattr(module, "k_cache") and hasattr(module, "v_cache"):
+                    module.layer_id = layer_id
+                    module.k_cache = self.kv_cache[0, layer_id]
+                    module.v_cache = self.kv_cache[1, layer_id]
+                    module.sparse_rt = SparseLayerRuntime(layer_id, sparse_cfg)
+                    layer_id += 1
+            return
+
         block_bytes = 2 * hf_config.num_hidden_layers * self.block_size * num_kv_heads * head_dim * hf_config.dtype.itemsize
         config.num_kvcache_blocks = int(total * config.gpu_memory_utilization - used - peak + current) // block_bytes
         assert config.num_kvcache_blocks > 0
@@ -162,6 +203,56 @@ class ModelRunner:
     def clear_attention_trace(self):
         from nanovllm.utils.trace import get_tracer
         get_tracer().clear()
+
+    # -- M11 sparse control -------------------------------------------------
+    def sparse_reset(self):
+        from nanovllm.sparse.engine_runtime import reset_all_layer_runtimes, reset_sparse_counters
+        reset_all_layer_runtimes()
+        reset_sparse_counters()
+
+    def sparse_set_selector(self, name: str):
+        from nanovllm.sparse.engine_runtime import set_all_selectors
+        set_all_selectors(name)
+
+    def sparse_counters(self):
+        from nanovllm.sparse.engine_runtime import get_sparse_counters
+        c = get_sparse_counters()
+        return {
+            "sparse_prefill_initializations": c.sparse_prefill_initializations,
+            "sparse_decode_layer_calls": c.sparse_decode_layer_calls,
+            "sparse_generated_steps": c.sparse_generated_steps,
+            "dense_decode_fallbacks": c.dense_decode_fallbacks,
+        }
+
+    def sparse_history_bytes(self):
+        total = 0
+        for m in self.model.modules():
+            rt = getattr(m, "sparse_rt", None)
+            if rt is not None:
+                total += rt.history_bytes()
+        return total
+
+    def sparse_sample_selection(self, layer_id: int = 14):
+        for m in self.model.modules():
+            rt = getattr(m, "sparse_rt", None)
+            if rt is not None and rt.layer_id == layer_id and rt.last_selection is not None:
+                s = rt.last_selection
+                return {
+                    "selected_token_ratio": s.selected_token_ratio,
+                    "num_selected_tokens": s.num_selected_tokens,
+                    "h2d_bytes": s.h2d_bytes,
+                    "full_kv_bytes": s.full_kv_bytes,
+                    "truncated": s.truncated,
+                    "timings_ms": {
+                        "search_ms": s.search_ms,
+                        "refine_ms": s.refine_ms,
+                        "gather_ms": s.gather_ms,
+                        "h2d_ms": s.h2d_ms,
+                        "attention_ms": s.attention_ms,
+                    },
+                    "work": s.work,
+                }
+        return None
 
     def lookup_cpu_context(self, token_ids: list[int]):
         if self.context_db is None:
@@ -252,7 +343,7 @@ class ModelRunner:
             cu_seqlens_k.append(cu_seqlens_k[-1] + seqlen_k)
             max_seqlen_q = max(seqlen_q, max_seqlen_q)
             max_seqlen_k = max(seqlen_k, max_seqlen_k)
-            if not seq.block_table:    # warmup
+            if not seq.block_table:    # warmup or sparse virtual
                 continue
             start_block = start // self.block_size
             end_block = (end + self.block_size - 1) // self.block_size
@@ -284,12 +375,16 @@ class ModelRunner:
             input_ids.append(seq.last_token)
             positions.append(len(seq) - 1)
             context_lens.append(len(seq))
-            slot_mapping.append(seq.block_table[-1] * self.block_size + seq.last_block_num_tokens  - 1)
+            if self.config.enable_sparse_attention:
+                # sparse virtual decode: no physical slot, no block table
+                slot_mapping.append(-1)
+            else:
+                slot_mapping.append(seq.block_table[-1] * self.block_size + seq.last_block_num_tokens  - 1)
         input_ids = torch.tensor(input_ids, dtype=torch.int64, pin_memory=True).cuda(non_blocking=True)
         positions = torch.tensor(positions, dtype=torch.int64, pin_memory=True).cuda(non_blocking=True)
         slot_mapping = torch.tensor(slot_mapping, dtype=torch.int32, pin_memory=True).cuda(non_blocking=True)
         context_lens = torch.tensor(context_lens, dtype=torch.int32, pin_memory=True).cuda(non_blocking=True)
-        block_tables = self.prepare_block_tables(seqs)
+        block_tables = None if self.config.enable_sparse_attention else self.prepare_block_tables(seqs)
         set_context(False, slot_mapping=slot_mapping, context_lens=context_lens, block_tables=block_tables)
         return input_ids, positions
 

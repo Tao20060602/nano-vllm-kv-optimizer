@@ -1,0 +1,427 @@
+{
+  "config": {
+    "model": "/opt/models/Qwen3-0.6B",
+    "prompt_tokens": 2048,
+    "num_gen": 16,
+    "max_model_len": 2068,
+    "beta_raw": 48.0,
+    "beta_scaled_logit": 4.242640687119285,
+    "recent_tokens": 128,
+    "rbs": 64,
+    "head_dim": 128
+  },
+  "methods": {
+    "full": {
+      "token_ids": [
+        11017,
+        458,
+        77783,
+        938,
+        1815,
+        518,
+        264,
+        2155,
+        6010,
+        13,
+        576,
+        12941,
+        1849,
+        5610,
+        8063,
+        32875
+      ],
+      "text": " follows an elliptical path at a different distance. The solar system contains eight planets",
+      "ttft_ms": 57564.324671999995,
+      "decode_p50_ms": 507.5071889999663,
+      "decode_p95_ms": 735.8998729999939,
+      "total_ms": 65925.2701040001,
+      "token_agreement": 1.0,
+      "first_divergence_position": 16,
+      "counters": {
+        "sparse_prefill_initializations": 28,
+        "sparse_decode_layer_calls": 420,
+        "sparse_generated_steps": 15,
+        "dense_decode_fallbacks": 0
+      },
+      "selection_sample_layer14": {
+        "selected_token_ratio": 1.0,
+        "num_selected_tokens": 2063,
+        "h2d_bytes": 8450048,
+        "full_kv_bytes": 8450048,
+        "truncated": false,
+        "timings_ms": {
+          "search_ms": 0.07204200005617167,
+          "refine_ms": 0.0,
+          "gather_ms": 1.095971000040663,
+          "h2d_ms": 6.473325000001751,
+          "attention_ms": 6.907665000085217
+        },
+        "work": {}
+      },
+      "cpu_history_bytes": 237174784,
+      "cuda_allocated_bytes": 1221687296,
+      "needle_present": false
+    },
+    "exact_dipr": {
+      "token_ids": [
+        11017,
+        458,
+        77783,
+        938,
+        1815,
+        518,
+        264,
+        2155,
+        6010,
+        13,
+        576,
+        12941,
+        1849,
+        5610,
+        8063,
+        32875
+      ],
+      "text": " follows an elliptical path at a different distance. The solar system contains eight planets",
+      "ttft_ms": 67974.69008000007,
+      "decode_p50_ms": 642.6626219999889,
+      "decode_p95_ms": 759.4137170000295,
+      "total_ms": 77875.11332399992,
+      "token_agreement": 1.0,
+      "first_divergence_position": 16,
+      "counters": {
+        "sparse_prefill_initializations": 28,
+        "sparse_decode_layer_calls": 420,
+        "sparse_generated_steps": 15,
+        "dense_decode_fallbacks": 0
+      },
+      "selection_sample_layer14": {
+        "selected_token_ratio": 1.0,
+        "num_selected_tokens": 2063,
+        "h2d_bytes": 8450048,
+        "full_kv_bytes": 8450048,
+        "truncated": false,
+        "timings_ms": {
+          "search_ms": 5.5765189999874565,
+          "refine_ms": 0.0,
+          "gather_ms": 0.716022000005978,
+          "h2d_ms": 4.003192000027411,
+          "attention_ms": 3.642319999926258
+        },
+        "work": {
+          "pre_window_recall": 1.0,
+          "oracle_blocks": 33
+        }
+      },
+      "cpu_history_bytes": 237174784,
+      "cuda_allocated_bytes": 1221687296,
+      "needle_present": false
+    },
+    "top_k": {
+      "token_ids": [
+        11017,
+        458,
+        77783,
+        938,
+        1815,
+        518,
+        264,
+        2155,
+        6010,
+        13,
+        576,
+        12941,
+        1849,
+        5610,
+        8063,
+        32875
+      ],
+      "text": " follows an elliptical path at a different distance. The solar system contains eight planets",
+      "ttft_ms": 56716.047657999865,
+      "decode_p50_ms": 747.0630780001102,
+      "decode_p95_ms": 870.2623780000067,
+      "total_ms": 67999.78781100015,
+      "token_agreement": 1.0,
+      "first_divergence_position": 16,
+      "counters": {
+        "sparse_prefill_initializations": 28,
+        "sparse_decode_layer_calls": 420,
+        "sparse_generated_steps": 15,
+        "dense_decode_fallbacks": 0
+      },
+      "selection_sample_layer14": {
+        "selected_token_ratio": 0.9069316529326223,
+        "num_selected_tokens": 1871,
+        "h2d_bytes": 7663616,
+        "full_kv_bytes": 8450048,
+        "truncated": false,
+        "timings_ms": {
+          "search_ms": 3.7396870000065974,
+          "refine_ms": 0.0,
+          "gather_ms": 1.437234000150056,
+          "h2d_ms": 5.552147000116747,
+          "attention_ms": 6.428750999930344
+        },
+        "work": {
+          "pre_window_recall": 0.9090909090909091,
+          "oracle_blocks": 33
+        }
+      },
+      "cpu_history_bytes": 237174784,
+      "cuda_allocated_bytes": 1221687296,
+      "needle_present": false
+    },
+    "mean": {
+      "token_ids": [
+        11017,
+        458,
+        77783,
+        938,
+        1815,
+        518,
+        264,
+        2155,
+        6010,
+        13,
+        576,
+        12941,
+        1849,
+        5610,
+        8063,
+        32875
+      ],
+      "text": " follows an elliptical path at a different distance. The solar system contains eight planets",
+      "ttft_ms": 54775.24850000009,
+      "decode_p50_ms": 937.9738079999242,
+      "decode_p95_ms": 1003.941075000057,
+      "total_ms": 68926.69535699974,
+      "token_agreement": 1.0,
+      "first_divergence_position": 16,
+      "counters": {
+        "sparse_prefill_initializations": 28,
+        "sparse_decode_layer_calls": 420,
+        "sparse_generated_steps": 15,
+        "dense_decode_fallbacks": 0
+      },
+      "selection_sample_layer14": {
+        "selected_token_ratio": 0.9689772176442074,
+        "num_selected_tokens": 1999,
+        "h2d_bytes": 8187904,
+        "full_kv_bytes": 8450048,
+        "truncated": false,
+        "timings_ms": {
+          "search_ms": 0.8327440000357456,
+          "refine_ms": 15.30229199988753,
+          "gather_ms": 0.7049570001527172,
+          "h2d_ms": 5.832689000044411,
+          "attention_ms": 6.496978999848579
+        },
+        "work": {
+          "rep_dot_products": 512,
+          "refined_block_head_pairs": 419
+        }
+      },
+      "cpu_history_bytes": 237174784,
+      "cuda_allocated_bytes": 1221687296,
+      "needle_present": false
+    },
+    "real": {
+      "token_ids": [
+        11017,
+        458,
+        77783,
+        938,
+        1815,
+        518,
+        264,
+        2155,
+        6010,
+        13,
+        576,
+        12941,
+        1849,
+        5610,
+        8063,
+        32875
+      ],
+      "text": " follows an elliptical path at a different distance. The solar system contains eight planets",
+      "ttft_ms": 52020.20051599993,
+      "decode_p50_ms": 528.9294110000355,
+      "decode_p95_ms": 633.9975200000936,
+      "total_ms": 60262.18252600006,
+      "token_agreement": 1.0,
+      "first_divergence_position": 16,
+      "counters": {
+        "sparse_prefill_initializations": 28,
+        "sparse_decode_layer_calls": 420,
+        "sparse_generated_steps": 15,
+        "dense_decode_fallbacks": 0
+      },
+      "selection_sample_layer14": {
+        "selected_token_ratio": 0.4105671352399418,
+        "num_selected_tokens": 847,
+        "h2d_bytes": 3469312,
+        "full_kv_bytes": 8450048,
+        "truncated": false,
+        "timings_ms": {
+          "search_ms": 1.052191999860952,
+          "refine_ms": 1.475316999858478,
+          "gather_ms": 0.27620300011221843,
+          "h2d_ms": 3.012957999999344,
+          "attention_ms": 2.845300999979372
+        },
+        "work": {
+          "rep_dot_products": 2048,
+          "refined_block_head_pairs": 32
+        }
+      },
+      "cpu_history_bytes": 237174784,
+      "cuda_allocated_bytes": 1221687296,
+      "needle_present": false
+    },
+    "knn_graph": {
+      "token_ids": [
+        11017,
+        458,
+        77783,
+        938,
+        1815,
+        518,
+        264,
+        2155,
+        6010,
+        13,
+        576,
+        12941,
+        1849,
+        5610,
+        8063,
+        32875
+      ],
+      "text": " follows an elliptical path at a different distance. The solar system contains eight planets",
+      "ttft_ms": 56646.56010099998,
+      "decode_p50_ms": 1110.3746810001667,
+      "decode_p95_ms": 1204.2673129999457,
+      "total_ms": 73447.96502900022,
+      "token_agreement": 1.0,
+      "first_divergence_position": 16,
+      "counters": {
+        "sparse_prefill_initializations": 28,
+        "sparse_decode_layer_calls": 420,
+        "sparse_generated_steps": 15,
+        "dense_decode_fallbacks": 0
+      },
+      "selection_sample_layer14": {
+        "selected_token_ratio": 0.3795443528841493,
+        "num_selected_tokens": 783,
+        "h2d_bytes": 3207168,
+        "full_kv_bytes": 8450048,
+        "truncated": true,
+        "timings_ms": {
+          "search_ms": 21.347112000057678,
+          "refine_ms": 0.0,
+          "gather_ms": 0.29401500000858505,
+          "h2d_ms": 2.784617999850525,
+          "attention_ms": 2.9027120001501316
+        },
+        "work": {
+          "scored_block_head_pairs": 496,
+          "refined_block_head_pairs": 32
+        }
+      },
+      "cpu_history_bytes": 237174784,
+      "cuda_allocated_bytes": 1221687296,
+      "needle_present": false
+    },
+    "query_guided": {
+      "token_ids": [
+        11017,
+        458,
+        77783,
+        938,
+        1815,
+        518,
+        264,
+        2155,
+        6010,
+        13,
+        576,
+        12941,
+        1849,
+        5610,
+        8063,
+        32875
+      ],
+      "text": " follows an elliptical path at a different distance. The solar system contains eight planets",
+      "ttft_ms": 65617.25360600007,
+      "decode_p50_ms": 1299.4876310001473,
+      "decode_p95_ms": 1424.7906179998608,
+      "total_ms": 85123.66531800057,
+      "token_agreement": 1.0,
+      "first_divergence_position": 16,
+      "counters": {
+        "sparse_prefill_initializations": 28,
+        "sparse_decode_layer_calls": 420,
+        "sparse_generated_steps": 15,
+        "dense_decode_fallbacks": 0
+      },
+      "selection_sample_layer14": {
+        "selected_token_ratio": 0.3795443528841493,
+        "num_selected_tokens": 783,
+        "h2d_bytes": 3207168,
+        "full_kv_bytes": 8450048,
+        "truncated": true,
+        "timings_ms": {
+          "search_ms": 27.924159000122017,
+          "refine_ms": 0.0,
+          "gather_ms": 0.3054329999940819,
+          "h2d_ms": 2.6765739999063953,
+          "attention_ms": 3.101963999824875
+        },
+        "work": {
+          "scored_block_head_pairs": 481,
+          "refined_block_head_pairs": 31
+        }
+      },
+      "cpu_history_bytes": 237174784,
+      "cuda_allocated_bytes": 1221687296,
+      "needle_present": false
+    }
+  },
+  "dense_baseline": {
+    "token_ids": [
+      11017,
+      458,
+      77783,
+      938,
+      1815,
+      518,
+      264,
+      2155,
+      6010,
+      13,
+      576,
+      12941,
+      1849,
+      5610,
+      8063,
+      32875
+    ],
+    "text": " follows an elliptical path at a different distance. The solar system contains eight planets",
+    "ttft_ms": 3261.5538310000147,
+    "decode_p50_ms": 38.94693900008406,
+    "decode_p95_ms": 49.58344200008469,
+    "total_ms": 6493.7321910002765
+  },
+  "memory": {
+    "dense_paged_kv_bytes": 12859736064,
+    "sparse_paged_kv_bytes": 0,
+    "cuda_allocated_after_dense_init": 14081341440,
+    "cuda_allocated_after_sparse_init": 1221687296,
+    "cuda_peak_allocated_bytes": 2472985088
+  },
+  "task": {
+    "needle": "74291",
+    "dense_found_needle": false
+  },
+  "git_head_at_benchmark_start": "00e4a4edacfe79fdbbb0d1460a786d50372486c1"
+}

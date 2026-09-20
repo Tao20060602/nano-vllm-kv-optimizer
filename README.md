@@ -216,3 +216,76 @@ docs/                  upstream, architecture, correctness, limitations,
                        benchmark methodology, end-to-end reuse walkthrough
 tests/                 28 tests, all passing
 ```
+## M8–M11: block-sparse decode + CPU KV offload (educational)
+
+M8–M11 extend the engine with block-level sparse attention inspired by AlayaDB
+DIPR/DIPRS. This is a **single-sequence educational prototype**:
+
+- exact Block-DIPR oracle (M8), real-model trace + synchronous CPU KV offload
+  (M9), sampled-query-guided block graph with DIPRS traversal (M10), and
+  engine integration where packed sparse attention actually feeds token
+  generation (M11).
+
+**Project positioning:** NanoKV is an educational block-level sparse-attention
+and CPU-KV-offload prototype inspired by AlayaDB DIPR/DIPRS. It uses exact
+scanning as an oracle and a *simplified sampled-query-guided graph*, not a
+reproduction of AlayaDB's production RoarGraph.
+
+### Data flow (sparse decode)
+
+```
+dense FlashAttention prefill (GPU)
+  -> each layer copies post-RoPE K/V to CPU history
+  -> build frozen reps + per-KV-head block graph from sampled (non-final) q
+decode token:
+  append current post-RoPE K/V to CPU
+  -> CPU selector (full/exact/top-k/mean/real/KNN/qg)
+  -> force first + recent windows
+  -> gather selected rows to pinned staging
+  -> H2D only packed K/V
+  -> packed PyTorch attention -> o_proj -> sampler
+```
+
+### Commands
+
+```bash
+# feature-off: original paged FlashAttention (unchanged)
+python -m nanovllm --model /opt/models/Qwen3-0.6B
+
+# one-command sparse demo (dense baseline vs query-guided)
+bash scripts/run_m11_demo.sh
+
+# full engine benchmark (writes JSON/CSV + plots)
+.venv/bin/python benchmarks/benchmark_engine_sparse.py
+.venv/bin/python benchmarks/plot_m11_results.py
+```
+
+### Hardware
+
+RTX 3080 Laptop (16 GB), CUDA 12.8, torch 2.7.1+cu128, Qwen3-0.6B bf16, WSL2.
+
+### M11 result summary (Qwen3-0.6B, exactly-2048-token prompt, greedy, 16 tokens)
+
+| selector | selected ratio | pre-window recall | agreement vs dense | p50 TPOT |
+|---|---|---|---|---|
+| dense FlashAttention (feature-off) | 1.0 | n/a | 1.00 | ~35 ms |
+| full CPU offload | 1.00 | 1.00 | 1.00 | 508 ms |
+| exact Block-DIPR | 1.00 | 1.00 | 1.00 | 643 ms |
+| top_k | 0.91 | 0.91 | 1.00 | 747 ms |
+| mean representative | 0.97 | ~1.0 | 1.00 | 938 ms |
+| r=4 real representative | 0.41 | ~1.0 | 1.00 | 529 ms |
+| KNN graph | 0.38 | ~1.0 | 1.00 | 1110 ms |
+| query-guided graph | 0.38 | ~1.0 | 1.00 | 1299 ms |
+
+Counters: 28 layer prefill inits, 15 generated steps, 420 decode layer calls,
+0 dense fallbacks. beta_raw=48, beta_scaled_logit=4.24. Sparse mode allocates
+**0** paged GPU KV blocks; the pageable CPU history buffer is ~226 MiB over 28
+layers at this 2068-token capacity (a linear ~896 MiB only at an 8192-token
+capacity). Packed GPU attention is sub-millisecond; the higher TPOT comes from
+synchronous Python CPU selection over a 2048-token history, **not** attention.
+No end-to-end speedup is claimed.
+
+The M11 dense reference is the **feature-off, real paged FlashAttention engine**
+(upstream kernel), not the M9/M10 `dense_decode_attention` PyTorch replay. The
+packed GPU attention used in sparse decode is a PyTorch implementation. See
+`docs/nanokv_m11_results.md` and `docs/nanokv_interview_guide.md`.

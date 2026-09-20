@@ -13,6 +13,7 @@ class Scheduler:
         self.max_num_batched_tokens = config.max_num_batched_tokens
         self.eos = config.eos
         self.block_size = config.kvcache_block_size
+        self.sparse = getattr(config, "enable_sparse_attention", False)
         self.block_manager = BlockManager(config.num_kvcache_blocks, config.kvcache_block_size, metrics)
         self.waiting: deque[Sequence] = deque()
         self.running: deque[Sequence] = deque()
@@ -23,7 +24,36 @@ class Scheduler:
     def add(self, seq: Sequence):
         self.waiting.append(seq)
 
+    # -- M11 sparse virtual-allocation path (no physical paged blocks) ---
+    def _sparse_schedule(self) -> tuple[list[Sequence], bool]:
+        # single sequence only; reject batching/preemption.
+        if self.waiting:
+            if self.running:
+                raise RuntimeError(
+                    "sparse mode supports one sequence at a time; "
+                    "rejecting a second prompt while one is running")
+            if len(self.waiting) > 1:
+                raise RuntimeError(
+                    "sparse mode rejects batched prompts (waiting>1)")
+            seq = self.waiting.popleft()
+            seq.num_scheduled_tokens = seq.num_tokens
+            seq.is_prefill = True
+            seq.status = SequenceStatus.RUNNING
+            self.running.append(seq)
+            return [seq], True
+        if not self.running or len(self.running) > 1:
+            raise RuntimeError(
+                "sparse mode must have exactly one running sequence")
+        seq = self.running.popleft()
+        seq.num_scheduled_tokens = 1
+        seq.is_prefill = False
+        self.running.append(seq)
+        return [seq], False
+
     def schedule(self) -> tuple[list[Sequence], bool]:
+        if self.sparse:
+            return self._sparse_schedule()
+
         scheduled_seqs = []
         num_batched_tokens = 0
 
@@ -140,7 +170,8 @@ class Scheduler:
 
     def postprocess(self, seqs: list[Sequence], token_ids: list[int], is_prefill: bool):
         for seq, token_id in zip(seqs, token_ids):
-            self.block_manager.hash_blocks(seq)
+            if not self.sparse:
+                self.block_manager.hash_blocks(seq)
             seq.num_cached_tokens += seq.num_scheduled_tokens
             seq.num_scheduled_tokens = 0
             if is_prefill and seq.num_cached_tokens < seq.num_tokens:
@@ -148,5 +179,6 @@ class Scheduler:
             seq.append_token(token_id)
             if (not seq.ignore_eos and token_id == self.eos) or seq.num_completion_tokens == seq.max_tokens:
                 seq.status = SequenceStatus.FINISHED
-                self.block_manager.deallocate(seq)
+                if not self.sparse:
+                    self.block_manager.deallocate(seq)
                 self.running.remove(seq)

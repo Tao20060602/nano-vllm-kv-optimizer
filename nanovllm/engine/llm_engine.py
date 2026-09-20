@@ -115,6 +115,23 @@ class LLMEngine:
     def get_last_cpu_store_error(self) -> str | None:
         return self.model_runner.last_cpu_store_error
 
+    # -- M11 sparse integration control ------------------------------------
+    def sparse_reset(self) -> None:
+        """Clear all per-layer CPU histories and counters before a new request."""
+        self.model_runner.call("sparse_reset")
+
+    def sparse_set_selector(self, name: str) -> None:
+        self.model_runner.call("sparse_set_selector", name)
+
+    def sparse_counters(self) -> dict:
+        return self.model_runner.call("sparse_counters")
+
+    def sparse_history_bytes(self) -> int:
+        return self.model_runner.call("sparse_history_bytes")
+
+    def sparse_sample_selection(self, layer_id: int = 14) -> dict:
+        return self.model_runner.call("sparse_sample_selection", layer_id)
+
     # -- M9 real-model attention trace (opt-in, one-shot) -------------------
     def arm_attention_trace(self, layer_id: int, query_samples: int = 0) -> None:
         """Capture one layer's next cold, single-sequence prefill attention."""

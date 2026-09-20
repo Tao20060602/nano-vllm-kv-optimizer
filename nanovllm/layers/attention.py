@@ -58,9 +58,32 @@ class Attention(nn.Module):
         self.k_cache = self.v_cache = torch.tensor([])
         # Logical layer id assigned by ModelRunner when KV caches are wired up.
         self.layer_id = None
+        # M11: opt-in per-layer sparse CPU-KV runtime (None when feature-off).
+        self.sparse_rt = None
 
     def forward(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor):
         context = get_context()
+        rt = getattr(self, "sparse_rt", None)
+
+        # ---- M11 opt-in sparse path -------------------------------------
+        if rt is not None and rt.enabled:
+            assert q.shape[0] == (context.max_seqlen_q or q.shape[0]) or context.is_prefill
+            if context.is_prefill:
+                # dense prefill output (must remain dense + fit on GPU)
+                o = flash_attn_varlen_func(q, k, v,
+                                           max_seqlen_q=context.max_seqlen_q, cu_seqlens_q=context.cu_seqlens_q,
+                                           max_seqlen_k=context.max_seqlen_k, cu_seqlens_k=context.cu_seqlens_k,
+                                           softmax_scale=self.scale, causal=True, block_table=context.block_tables)
+                # per-layer CPU history init + frozen index build
+                rt.prefill(q, k, v)
+                return o
+            # sparse decode: exactly one query token, no paged cache, no FA
+            assert q.shape[0] == 1, "sparse decode supports a single query token"
+            assert context.block_tables is None, "sparse decode must not use paged block tables"
+            assert self.k_cache.numel() == 0, "sparse mode must allocate zero paged blocks"
+            return rt.decode(q, k, v, q.device)
+
+        # ---- feature-off: original dense paged FlashAttention path -------
         k_cache, v_cache = self.k_cache, self.v_cache
         if k_cache.numel() and v_cache.numel():
             store_kvcache(k, v, k_cache, v_cache, context.slot_mapping)
@@ -75,6 +98,6 @@ class Attention(nn.Module):
             get_tracer().maybe_capture(self.layer_id, q, k, v, o, context)
         else:    # decode
             o = flash_attn_with_kvcache(q.unsqueeze(1), k_cache, v_cache,
-                                        cache_seqlens=context.context_lens, block_table=context.block_tables, 
+                                        cache_seqlens=context.context_lens, block_table=context.block_tables,
                                         softmax_scale=self.scale, causal=True)
         return o

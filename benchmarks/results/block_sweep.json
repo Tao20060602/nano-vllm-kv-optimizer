@@ -1,0 +1,36 @@
+{
+  "block_size_sweep": [
+    {
+      "rbs": 32,
+      "blocks": 26,
+      "oracle_blocks": 26,
+      "recall": 1.0,
+      "selected_ratio": 1.0,
+      "refine_pairs": 307
+    },
+    {
+      "rbs": 64,
+      "blocks": 13,
+      "oracle_blocks": 13,
+      "recall": 1.0,
+      "selected_ratio": 1.0,
+      "refine_pairs": 172
+    },
+    {
+      "rbs": 128,
+      "blocks": 7,
+      "oracle_blocks": 7,
+      "recall": 1.0,
+      "selected_ratio": 1.0,
+      "refine_pairs": 94
+    },
+    {
+      "rbs": 256,
+      "blocks": 4,
+      "oracle_blocks": 4,
+      "recall": 1.0,
+      "selected_ratio": 1.0,
+      "refine_pairs": 56
+    }
+  ]
+}
