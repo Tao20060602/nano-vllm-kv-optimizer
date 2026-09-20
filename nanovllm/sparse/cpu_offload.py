@@ -249,3 +249,132 @@ def route_a_replay(
         active_byte_ratio=active_ratio,
         pinned=store.pinned,
     )
+
+
+from dataclasses import dataclass
+from time import perf_counter
+from typing import Any, Callable
+
+import torch
+
+from nanovllm.sparse.block_sparse import (
+    selected_token_indices,
+    sparse_decode_attention,
+)
+
+
+@dataclass
+class SelectorRouteResult:
+    output: torch.Tensor
+    indices: torch.Tensor
+    union_blocks: torch.Tensor
+    num_selected_blocks: int
+    num_selected_tokens: int
+    num_tokens: int
+    timings_ms: dict
+    work: dict
+    h2d_bytes: int
+    full_kv_bytes: int
+    active_byte_ratio: float
+    pinned: bool
+
+
+def route_a_selective(
+    store,
+    q_cpu: torch.Tensor,
+    run_selector: Callable[[], dict],
+    device,
+    retrieval_block_size: int = 64,
+    first_tokens: int = 0,
+    recent_tokens: int = 128,
+    scale=None,
+) -> SelectorRouteResult:
+    """One timed approximate Route-A replay driven by an arbitrary selector.
+
+    ``run_selector`` is a zero-arg callable returning a dict with keys
+    ``union_mask`` (bool [B] CPU, before forced windows), ``search_ms`` and
+    ``refine_ms`` (CPU) plus arbitrary ``work`` counters.  The whole replay is
+    timed around one complete run; the approximate path never scans all keys
+    and only the packed selected K/V crosses to CUDA.
+    """
+    device = torch.device(device)
+    if q_cpu.device.type != "cpu":
+        q_cpu = q_cpu.cpu()
+    if scale is None:
+        scale = store.head_dim ** -0.5
+    t = store.num_tokens
+
+    total_start = perf_counter()
+
+    sel = run_selector()
+    union_mask = sel["union_mask"]
+    search_ms = float(sel["search_ms"])
+    refine_ms = float(sel["refine_ms"])
+    work = dict(sel.get("work", {}))
+
+    indices = selected_token_indices(
+        union_mask, t, retrieval_block_size,
+        first_tokens=first_tokens, recent_tokens=recent_tokens,
+    )
+
+    gather_start = perf_counter()
+    staging = store.gather(indices)
+    if device.type == "cuda":
+        torch.cuda.synchronize()
+    gather_ms = (perf_counter() - gather_start) * 1000.0
+
+    q_gpu = q_cpu.to(device, non_blocking=False)
+
+    if device.type == "cuda":
+        torch.cuda.synchronize()
+    h2d_start = perf_counter()
+    packed_k_gpu = staging.packed_k.to(device, non_blocking=False)
+    packed_v_gpu = staging.packed_v.to(device, non_blocking=False)
+    if device.type == "cuda":
+        torch.cuda.synchronize()
+    h2d_ms = (perf_counter() - h2d_start) * 1000.0
+
+    if device.type == "cuda":
+        torch.cuda.synchronize()
+    attn_start = perf_counter()
+    packed_positions = torch.arange(staging.num_selected_tokens, device=device)
+    output = sparse_decode_attention(
+        q_gpu, packed_k_gpu, packed_v_gpu, packed_positions, scale=scale
+    )
+    if device.type == "cuda":
+        torch.cuda.synchronize()
+    attn_ms = (perf_counter() - attn_start) * 1000.0
+
+    total_ms = (perf_counter() - total_start) * 1000.0
+
+    h2d_bytes = staging.h2d_bytes
+    full_bytes = store.full_kv_bytes()
+    expected_h2d = (
+        2 * staging.num_selected_tokens * store.num_kv_heads
+        * store.head_dim * store.dtype.itemsize
+    )
+    if h2d_bytes != expected_h2d:
+        raise RuntimeError(f"H2D byte accounting mismatch: {h2d_bytes} != {expected_h2d}")
+    active_ratio = staging.num_selected_tokens / t
+
+    return SelectorRouteResult(
+        output=output,
+        indices=staging.indices,
+        union_blocks=union_mask,
+        num_selected_blocks=int(union_mask.sum().item()),
+        num_selected_tokens=staging.num_selected_tokens,
+        num_tokens=t,
+        timings_ms={
+            "approx_search_ms": search_ms,
+            "approx_refine_ms": refine_ms,
+            "cpu_gather_ms": gather_ms,
+            "h2d_ms": h2d_ms,
+            "gpu_packed_attention_ms": attn_ms,
+            "total_replay_ms": total_ms,
+        },
+        work=work,
+        h2d_bytes=h2d_bytes,
+        full_kv_bytes=full_bytes,
+        active_byte_ratio=active_ratio,
+        pinned=store.pinned,
+    )

@@ -151,9 +151,9 @@ class ModelRunner:
                 layer_id += 1
 
     # -- M9 real-model attention trace (opt-in, one-shot) -------------------
-    def arm_attention_trace(self, layer_id: int):
+    def arm_attention_trace(self, layer_id: int, query_samples: int = 0):
         from nanovllm.utils.trace import get_tracer
-        get_tracer().arm(int(layer_id))
+        get_tracer().arm(int(layer_id), query_samples=int(query_samples))
 
     def retrieve_attention_trace(self):
         from nanovllm.utils.trace import get_tracer

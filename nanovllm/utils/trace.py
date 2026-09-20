@@ -1,4 +1,4 @@
-"""Opt-in, one-shot attention trace for the M9 real-model laboratory.
+"""Opt-in, one-shot attention trace for the M9/M10 real-model laboratory.
 
 The tracer is disabled by default and does essentially no work in
 :meth:`Attention.forward` unless explicitly armed *after* model construction
@@ -7,8 +7,11 @@ single-sequence prefill of one chosen layer it copies the post-RoPE
 ``q_last / k / v`` and the FlashAttention output ``o_last`` to CPU, detaches
 them, and immediately disarms itself.
 
-Only the shared :class:`nanovllm.layers.attention.Attention` path is involved;
-model-specific attention code is untouched.
+M10 adds an *optional* deterministic query-sample capture used only when
+explicitly armed with a positive ``query_samples`` count.  Sampled positions
+are stratified over the prefill and **exclude** the final prompt position
+(``q_last`` is the held-out evaluation query).  When sampling is not requested
+no extra tensor selection or copy happens.
 """
 
 from __future__ import annotations
@@ -28,6 +31,9 @@ class AttentionTrace:
     v: torch.Tensor        # [prompt_tokens, num_kv_heads, head_dim], CPU
     o_last: torch.Tensor   # [num_query_heads, head_dim], CPU
     dtype: str
+    # Optional M10 index-construction samples (never includes q_last).
+    q_samples: torch.Tensor | None = None          # [num_samples, Hq, D] CPU
+    q_sample_positions: torch.Tensor | None = None  # [num_samples] int64 CPU
 
     @property
     def num_tokens(self) -> int:
@@ -52,22 +58,30 @@ class AttentionTracer:
     def __init__(self) -> None:
         self._armed: bool = False
         self._layer_id: int | None = None
+        self._query_samples: int = 0
         self._trace: AttentionTrace | None = None
 
-    def arm(self, layer_id: int) -> None:
-        """Arm the tracer for one specific layer's next cold prefill."""
+    def arm(self, layer_id: int, query_samples: int = 0) -> None:
+        """Arm the tracer for one specific layer's next cold prefill.
+
+        ``query_samples`` > 0 additionally captures that many stratified,
+        non-final post-RoPE queries for offline index construction.
+        """
         self._trace = None
         self._layer_id = int(layer_id)
+        self._query_samples = max(0, int(query_samples))
         self._armed = True
 
     def disarm(self) -> None:
         self._armed = False
         self._layer_id = None
+        self._query_samples = 0
 
     def clear(self) -> None:
         self._trace = None
         self._armed = False
         self._layer_id = None
+        self._query_samples = 0
 
     @property
     def armed(self) -> bool:
@@ -100,6 +114,20 @@ class AttentionTracer:
         if cu_q is None or cu_q.numel() != 2:
             return
 
+        num_positions = q.shape[0]
+        q_samples = None
+        q_sample_positions = None
+        if self._query_samples > 0:
+            # Exclude the final prompt position (q_last is held out).
+            available = num_positions - 1
+            m = min(self._query_samples, available)
+            if m > 0:
+                positions = torch.linspace(
+                    0, available - 1, steps=m, device=q.device
+                ).round().long().unique().sort().values
+                q_samples = q[positions].detach().to("cpu", copy=True).contiguous()
+                q_sample_positions = positions.detach().to("cpu", copy=True).contiguous().long()
+
         trace = AttentionTrace(
             layer_id=int(module_layer_id),
             q_last=q[-1].detach().to("cpu", copy=True).contiguous(),
@@ -107,11 +135,14 @@ class AttentionTracer:
             v=v.detach().to("cpu", copy=True).contiguous(),
             o_last=o[-1].detach().to("cpu", copy=True).contiguous(),
             dtype=str(q.dtype),
+            q_samples=q_samples,
+            q_sample_positions=q_sample_positions,
         )
         self._trace = trace
         # One-shot: disarm immediately after a successful capture.
         self._armed = False
         self._layer_id = None
+        self._query_samples = 0
 
     def retrieve(self) -> AttentionTrace | None:
         """Return the captured trace (CPU tensors only), or None."""

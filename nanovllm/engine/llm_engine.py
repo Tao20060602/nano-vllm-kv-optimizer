@@ -116,9 +116,9 @@ class LLMEngine:
         return self.model_runner.last_cpu_store_error
 
     # -- M9 real-model attention trace (opt-in, one-shot) -------------------
-    def arm_attention_trace(self, layer_id: int) -> None:
+    def arm_attention_trace(self, layer_id: int, query_samples: int = 0) -> None:
         """Capture one layer's next cold, single-sequence prefill attention."""
-        self.model_runner.call("arm_attention_trace", layer_id)
+        self.model_runner.call("arm_attention_trace", layer_id, query_samples)
 
     def retrieve_attention_trace(self):
         """Return the captured CPU AttentionTrace, or None if not captured."""
