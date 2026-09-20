@@ -51,11 +51,20 @@ def _default_scale(head_dim: int) -> float:
 
 @dataclass(frozen=True)
 class RetrievalBlockMap:
-    """Map a global retrieval-block id to ``(physical_block_id, offset, valid_len)``.
+    """Map a global retrieval-block id to ``(logical_block_index, offset, len)``.
 
     The physical nano-vLLM KV block is 256 tokens; the initial retrieval block
-    is 64 tokens, so one physical block holds four retrieval blocks.  This helper
-    is M9 scaffolding; M8's attention tensors remain fully contiguous.
+    is 64 tokens, so one *logical* 256-token block holds four retrieval blocks.
+
+    Naming caveat (corrected in M9): ``locate`` returns a **logical** 256-token
+    block index, i.e. the position of the block within one sequence's logical
+    KV layout.  It is *not* the paged-cache GPU physical block id.  The physical
+    slot is obtained from the sequence's block table::
+
+        physical_gpu_block_id = sequence.block_table[logical_block_index]
+
+    Use :meth:`resolve_physical` for that indirection.  This helper is M9/M11
+    scaffolding; the laboratory attention tensors themselves remain contiguous.
     """
 
     physical_block_size: int = 256
@@ -75,24 +84,46 @@ class RetrievalBlockMap:
         return self.physical_block_size // self.retrieval_block_size
 
     def locate(self, retrieval_block_id: int, num_tokens: int) -> tuple[int, int, int]:
-        """Return ``(physical_block_id, token_offset, valid_length)``.
+        """Return ``(logical_block_index, token_offset, valid_length)``.
 
-        ``token_offset`` is within the physical block; ``valid_length`` truncates
-        the final, possibly partial retrieval block against ``num_tokens``.
+        ``logical_block_index`` is the 256-token logical block index within a
+        sequence (not a paged physical id); ``token_offset`` is within that
+        logical block; ``valid_length`` truncates the final, possibly partial
+        retrieval block against ``num_tokens``.
         """
         if retrieval_block_id < 0:
             raise ValueError("retrieval_block_id must be non-negative")
         rp = self.retrieval_blocks_per_physical
-        physical_block_id = retrieval_block_id // rp
-        within_physical = retrieval_block_id % rp
-        token_offset = within_physical * self.retrieval_block_size
+        logical_block_index = retrieval_block_id // rp
+        within_logical = retrieval_block_id % rp
+        token_offset = within_logical * self.retrieval_block_size
         start = retrieval_block_id * self.retrieval_block_size
         valid_length = min(self.retrieval_block_size, num_tokens - start)
         if valid_length <= 0:
             raise ValueError(
                 f"retrieval_block_id {retrieval_block_id} lies beyond num_tokens={num_tokens}"
             )
-        return physical_block_id, token_offset, valid_length
+        return logical_block_index, token_offset, valid_length
+
+    def resolve_physical(
+        self, block_table, retrieval_block_id: int, num_tokens: int
+    ) -> tuple[int, int, int]:
+        """Return ``(physical_gpu_block_id, token_offset, valid_length)``.
+
+        ``block_table`` is a sequence's logical->physical mapping
+        (``sequence.block_table``); ``physical_gpu_block_id`` is the true paged
+        cache slot.  This is the indirection M9 must not skip.
+        """
+        logical_block_index, token_offset, valid_length = self.locate(
+            retrieval_block_id, num_tokens
+        )
+        if logical_block_index >= len(block_table):
+            raise IndexError(
+                f"logical block {logical_block_index} is outside the block table "
+                f"(len={len(block_table)})"
+            )
+        physical_gpu_block_id = int(block_table[logical_block_index])
+        return physical_gpu_block_id, token_offset, valid_length
 
 
 # ---------------------------------------------------------------------------
@@ -257,10 +288,28 @@ def selected_token_indices(
     """Expand a (union) block mask into sorted, deduplicated token indices.
 
     Adds the ``first_tokens`` leading tokens and the ``recent_tokens`` trailing
-    tokens, then sorts and deduplicates.  Never returns padded indices.
+    tokens (both clamped to ``[0, num_tokens]``), then sorts and deduplicates.
+    Never returns padded, negative or out-of-range indices.
     """
     if block_mask.dim() != 1:
         raise ValueError("block_mask must be 1-D over blocks")
+    if num_tokens <= 0:
+        raise ValueError(f"num_tokens must be positive, got {num_tokens}")
+    if retrieval_block_size <= 0:
+        raise ValueError("retrieval_block_size must be positive")
+    if first_tokens < 0 or recent_tokens < 0:
+        raise ValueError("first_tokens and recent_tokens must be non-negative")
+    first_tokens = min(int(first_tokens), num_tokens)
+    recent_tokens = min(int(recent_tokens), num_tokens)
+
+    expected_blocks = (num_tokens + retrieval_block_size - 1) // retrieval_block_size
+    if block_mask.shape[0] != expected_blocks:
+        raise ValueError(
+            f"block_mask has {block_mask.shape[0]} blocks but num_tokens="
+            f"{num_tokens} with retrieval_block_size={retrieval_block_size} "
+            f"requires {expected_blocks} blocks"
+        )
+
     device = block_mask.device
     block_ids = block_mask.nonzero(as_tuple=False).squeeze(-1)
 

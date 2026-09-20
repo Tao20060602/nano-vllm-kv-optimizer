@@ -5,6 +5,7 @@ import triton.language as tl
 
 from flash_attn import flash_attn_varlen_func, flash_attn_with_kvcache
 from nanovllm.utils.context import get_context
+from nanovllm.utils.trace import get_tracer
 
 
 @triton.jit
@@ -55,6 +56,8 @@ class Attention(nn.Module):
         self.scale = scale
         self.num_kv_heads = num_kv_heads
         self.k_cache = self.v_cache = torch.tensor([])
+        # Logical layer id assigned by ModelRunner when KV caches are wired up.
+        self.layer_id = None
 
     def forward(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor):
         context = get_context()
@@ -68,6 +71,8 @@ class Attention(nn.Module):
                                        max_seqlen_q=context.max_seqlen_q, cu_seqlens_q=context.cu_seqlens_q,
                                        max_seqlen_k=context.max_seqlen_k, cu_seqlens_k=context.cu_seqlens_k,
                                        softmax_scale=self.scale, causal=True, block_table=context.block_tables)
+            # Opt-in, one-shot real-model trace (cold single-seq prefill only).
+            get_tracer().maybe_capture(self.layer_id, q, k, v, o, context)
         else:    # decode
             o = flash_attn_with_kvcache(q.unsqueeze(1), k_cache, v_cache,
                                         cache_seqlens=context.context_lens, block_table=context.block_tables, 

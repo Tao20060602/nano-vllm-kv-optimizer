@@ -1,7 +1,8 @@
-"""Block-sparse attention laboratory (M8).
+"""Block-sparse attention laboratory (M8) and CPU offload laboratory (M9).
 
-Standalone exact Block-DIPR prototype.  Importing this package only requires
-PyTorch; it must not pull in CUDA-only engine dependencies.
+Standalone exact Block-DIPR prototype plus synchronous single-layer CPU KV
+offload.  Importing this package only requires PyTorch; it must not pull in
+CUDA-only engine dependencies.
 """
 
 from nanovllm.sparse.block_sparse import (
@@ -19,6 +20,12 @@ from nanovllm.sparse.block_sparse import (
     sparse_decode_attention,
     union_block_mask,
 )
+from nanovllm.sparse.cpu_offload import (
+    CPULayerKVStore,
+    PackedCPUStaging,
+    RouteAResult,
+    route_a_replay,
+)
 
 __all__ = [
     "RetrievalBlockMap",
@@ -34,4 +41,8 @@ __all__ = [
     "selected_token_indices",
     "sparse_decode_attention",
     "union_block_mask",
+    "CPULayerKVStore",
+    "PackedCPUStaging",
+    "RouteAResult",
+    "route_a_replay",
 ]

@@ -41,6 +41,9 @@ class LLMEngine:
         atexit.register(self.exit)
 
     def exit(self):
+        # Idempotent: atexit may call this after an explicit shutdown.
+        if not hasattr(self, "model_runner"):
+            return
         self.model_runner.call("exit")
         del self.model_runner
         for p in self.ps:
@@ -111,6 +114,18 @@ class LLMEngine:
 
     def get_last_cpu_store_error(self) -> str | None:
         return self.model_runner.last_cpu_store_error
+
+    # -- M9 real-model attention trace (opt-in, one-shot) -------------------
+    def arm_attention_trace(self, layer_id: int) -> None:
+        """Capture one layer's next cold, single-sequence prefill attention."""
+        self.model_runner.call("arm_attention_trace", layer_id)
+
+    def retrieve_attention_trace(self):
+        """Return the captured CPU AttentionTrace, or None if not captured."""
+        return self.model_runner.call("retrieve_attention_trace")
+
+    def clear_attention_trace(self) -> None:
+        self.model_runner.call("clear_attention_trace")
 
     def generate(
         self,

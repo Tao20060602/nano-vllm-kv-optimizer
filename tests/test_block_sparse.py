@@ -53,10 +53,25 @@ def test_dense_matches_manual_calculation():
 def test_retrieval_block_mapping_256_64_partial():
     m = RetrievalBlockMap(256, 64)
     assert m.retrieval_blocks_per_physical == 4
+    # first element is the LOGICAL 256-token block index within the sequence
     assert m.locate(0, num_tokens=300) == (0, 0, 64)
     assert m.locate(3, num_tokens=300) == (0, 192, 64)
     # partial final retrieval block: block 4 starts at 256, only 44 tokens
     assert m.locate(4, num_tokens=300) == (1, 0, 44)
+
+
+def test_logical_index_is_not_physical_block_id():
+    # A paged block table maps logical -> physical GPU slots.
+    m = RetrievalBlockMap(256, 64)
+    block_table = [7, 3]  # logical 0 lives in physical slot 7, logical 1 in slot 3
+    logical, offset, valid = m.locate(4, num_tokens=300)
+    assert logical == 1
+    physical, offset2, valid2 = m.resolve_physical(block_table, 4, num_tokens=300)
+    assert physical == 3  # true paged physical id, not the logical index 1
+    assert offset == offset2 == 0
+    assert valid == valid2 == 44
+    # logical 0 -> physical 7
+    assert m.resolve_physical(block_table, 0, num_tokens=300)[0] == 7
 
 
 def test_retrieval_block_mapping_rejects_bad_divisor():
@@ -65,6 +80,58 @@ def test_retrieval_block_mapping_rejects_bad_divisor():
     except ValueError:
         return
     raise AssertionError("expected ValueError for non-divisible sizes")
+
+
+# 2b. hardened token-index assembly ----------------------------------------------
+def test_selected_token_indices_validates_inputs():
+    num_tokens = 40
+    rbs = 10
+    good_mask = torch.zeros(4, dtype=torch.bool)
+    # num_tokens must be positive
+    try:
+        selected_token_indices(good_mask, 0, rbs)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("expected ValueError for num_tokens<=0")
+    # mask length must describe num_tokens at the block size
+    bad_mask = torch.zeros(3, dtype=torch.bool)
+    try:
+        selected_token_indices(bad_mask, num_tokens, rbs)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("expected ValueError for mismatched mask length")
+    # negative windows rejected
+    try:
+        selected_token_indices(good_mask, num_tokens, rbs, first_tokens=-1)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("expected ValueError for negative first_tokens")
+    try:
+        selected_token_indices(good_mask, num_tokens, rbs, recent_tokens=-2)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("expected ValueError for negative recent_tokens")
+
+
+def test_selected_token_indices_windows_exceeding_context_are_clamped():
+    num_tokens = 12
+    rbs = 16  # one block covers all 12 tokens (partial block)
+    mask = torch.ones(1, dtype=torch.bool)
+    # windows larger than the context must clamp, never produce bad indices
+    idx = selected_token_indices(mask, num_tokens, rbs, first_tokens=99, recent_tokens=99)
+    assert idx.tolist() == list(range(num_tokens))
+    assert int(idx.min()) >= 0
+    assert int(idx.max()) < num_tokens
+    # empty selection with oversized recent window still covers only valid tokens
+    empty_mask = torch.zeros(1, dtype=torch.bool)
+    idx2 = selected_token_indices(empty_mask, num_tokens, rbs, recent_tokens=50)
+    assert idx2.tolist() == list(range(0, num_tokens))
+    idx3 = selected_token_indices(empty_mask, num_tokens, rbs, first_tokens=50)
+    assert idx3.tolist() == list(range(0, num_tokens))
 
 
 # 3. exact block scores equal a slow loop implementation ------------------------

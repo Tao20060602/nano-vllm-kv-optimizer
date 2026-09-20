@@ -140,12 +140,28 @@ class ModelRunner:
         layer_id = 0
         for module in self.model.modules():
             if hasattr(module, "k_cache") and hasattr(module, "v_cache"):
+                # Record the logical layer id so the attention tracer can
+                # target one specific layer.
+                module.layer_id = layer_id
                 if self.gpu_block_store is None:
                     module.k_cache = self.kv_cache[0, layer_id]
                     module.v_cache = self.kv_cache[1, layer_id]
                 else:
                     module.k_cache, module.v_cache = self.gpu_block_store.layer_cache(layer_id)
                 layer_id += 1
+
+    # -- M9 real-model attention trace (opt-in, one-shot) -------------------
+    def arm_attention_trace(self, layer_id: int):
+        from nanovllm.utils.trace import get_tracer
+        get_tracer().arm(int(layer_id))
+
+    def retrieve_attention_trace(self):
+        from nanovllm.utils.trace import get_tracer
+        return get_tracer().retrieve()
+
+    def clear_attention_trace(self):
+        from nanovllm.utils.trace import get_tracer
+        get_tracer().clear()
 
     def lookup_cpu_context(self, token_ids: list[int]):
         if self.context_db is None:
