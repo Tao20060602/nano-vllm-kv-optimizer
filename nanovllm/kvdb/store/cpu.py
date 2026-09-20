@@ -44,7 +44,9 @@ class CPUBlockStore:
     ) -> None:
         self.fingerprint = fingerprint
         self.pinned = pinned
-        self.on_invalidate = on_invalidate
+        self._invalidation_callbacks: list[InvalidationCallback] = []
+        if on_invalidate is not None:
+            self._invalidation_callbacks.append(on_invalidate)
         dtype_name = fingerprint.dtype.removeprefix("torch.")
         self.dtype = getattr(torch, dtype_name, None)
         if not isinstance(self.dtype, torch.dtype):
@@ -92,6 +94,20 @@ class CPUBlockStore:
     def resident_bytes(self) -> int:
         return self.resident_blocks * self.bytes_per_block
 
+    def add_invalidation_callback(self, callback: InvalidationCallback) -> None:
+        if callback not in self._invalidation_callbacks:
+            self._invalidation_callbacks.append(callback)
+
+    def contains(self, handle: CPUBlockHandle) -> bool:
+        try:
+            self._resolve(handle, touch=False)
+        except StaleCPUBlockHandle:
+            return False
+        return True
+
+    def touch(self, handle: CPUBlockHandle) -> None:
+        self._resolve(handle, touch=True)
+
     def _validate_payload(self, payload: KVBlockPayload) -> None:
         if payload.fingerprint != self.fingerprint:
             raise ValueError("cache fingerprint mismatch")
@@ -120,8 +136,8 @@ class CPUBlockStore:
     def _invalidate(self, slot_id: int, *, eviction: bool) -> None:
         slot = self._slots[slot_id]
         handle = CPUBlockHandle(slot_id, slot.generation)
-        if self.on_invalidate is not None:
-            self.on_invalidate(handle, slot.key)
+        for callback in tuple(self._invalidation_callbacks):
+            callback(handle, slot.key)
         slot.occupied = False
         slot.key = None
         if eviction:
