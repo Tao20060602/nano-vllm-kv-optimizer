@@ -11,40 +11,55 @@ The upstream files are retained as the execution baseline. NanoKV must preserve 
 
 ## Baseline commands
 
-From the repository root, after installing the upstream dependencies and placing a supported Qwen3-0.6B model at `~/huggingface/Qwen3-0.6B/`:
+Run from `/opt/nano-vllm` in the `NanoVLLM-Ubuntu` distribution:
 
 ```bash
-python example.py
-python bench.py
+source .venv/bin/activate
+export CUDA_HOME=/usr/local/cuda-12.8
+export HF_HOME=/opt/models/.cache/huggingface
+export NANOVLLM_MODEL=/opt/models/Qwen3-0.6B
+
+python benchmarks/baseline.py \
+  --output benchmarks/results/baseline_environment.json
+python example.py \
+  --output benchmarks/results/upstream_example.json
+python bench.py \
+  --output benchmarks/results/upstream_benchmark.json
+python benchmarks/deterministic_baseline.py \
+  --max-tokens 8 \
+  --output benchmarks/results/deterministic_baseline.json
 ```
 
-For a deterministic, machine-readable environment/baseline probe:
+`example.py` and `bench.py` retain their upstream defaults. The only changes in
+Milestone 0 are an explicit `--model`/`NANOVLLM_MODEL` override and optional JSON
+output, so the model does not have to be copied or symlinked into the upstream
+default directory. The deterministic baseline uses explicit input token IDs,
+greedy decoding (`temperature=0`), `ignore_eos=True`, and a fixed output length.
 
-```bash
-python benchmarks/baseline.py --output benchmarks/results/baseline_environment.json
+## Verified results
+
+The commands above were run successfully on 2026-09-20 in the authoritative
+WSL environment. Direct machine-readable evidence is stored in:
+
+- [`baseline_environment.json`](../benchmarks/results/baseline_environment.json)
+- [`upstream_example.json`](../benchmarks/results/upstream_example.json)
+- [`upstream_benchmark.json`](../benchmarks/results/upstream_benchmark.json)
+- [`deterministic_baseline.json`](../benchmarks/results/deterministic_baseline.json)
+
+The environment probe reports Python 3.12.3, PyTorch 2.7.1+cu128, CUDA available,
+and one NVIDIA GeForce RTX 3080 Laptop GPU. The official example completed both
+prompts. The unchanged default benchmark workload used 256 sequences, maximum
+input/output lengths of 1024, and produced 133,966 output tokens in 57.889 seconds
+(2,314.18 output tokens/s). This is a single upstream baseline run, not the later
+Milestone 6 statistical benchmark.
+
+The deterministic run produced these eight greedy token IDs:
+
+```text
+[151667, 198, 32313, 11, 279, 1196, 1101, 4588]
 ```
 
-The probe records Python, PyTorch, CUDA, GPU, dependency, model-path, and Git state. It never substitutes estimated performance numbers for a run that could not execute.
-
-## Current machine evidence
-
-On the machine used to initialize this workspace (2026-09-19), the default
-PowerShell `PATH` probe found:
-
-- `python`: not available on `PATH`;
-- the default `~/huggingface/Qwen3-0.6B` model directory: absent;
-- therefore the upstream example and benchmark have not been run here;
-- GPU correctness and latency remain pending until a Python/PyTorch/CUDA environment and model are provided.
-
-On 2026-09-20, an existing D-drive site-packages directory was also found at
-`D:\\music\\venv\\Lib\\site-packages`. It contains CPU-only PyTorch 2.14.0 and
-NumPy. With the repository and that directory on `PYTHONPATH`, the pure Python
-Milestone 1 tests pass (`4 passed`); this does not provide CUDA or upstream model
-coverage. The upstream example/benchmark still require Transformers, Triton,
-FlashAttention, a CUDA build, and model weights.
-
-The physical machine does have an NVIDIA GPU: `nvidia-smi` reports an NVIDIA
-GeForce RTX 3080 with 16 GB and driver `616.92` (CUDA UMD `13.4`). The remaining
-gap is therefore the runnable Python/CUDA package stack, not GPU hardware.
-
-Re-run the probe and the two upstream commands after installing the environment. Do not mark the GPU portions of the project complete until their real output is saved under `benchmarks/results/`.
+The result also records the allocated KV tensor shape and dtype so later cached
+and uncached runs can be compared against the same concrete baseline. Elapsed
+time includes engine/model initialization and is evidence of reproducibility,
+not a TTFT measurement.

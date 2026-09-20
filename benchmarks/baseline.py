@@ -27,7 +27,11 @@ def command_output(command: list[str]) -> str | None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, default=Path("benchmarks/results/baseline_environment.json"))
-    parser.add_argument("--model", type=Path, default=Path.home() / "huggingface" / "Qwen3-0.6B")
+    parser.add_argument(
+        "--model",
+        type=Path,
+        default=Path(os.environ.get("NANOVLLM_MODEL", Path.home() / "huggingface" / "Qwen3-0.6B")),
+    )
     args = parser.parse_args()
 
     packages = {name: importlib.util.find_spec(name) is not None for name in ("torch", "transformers", "triton", "flash_attn", "xxhash")}

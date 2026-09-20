@@ -1,0 +1,42 @@
+{
+  "model": "/opt/models/Qwen3-0.6B",
+  "prompt_token_ids": [
+    151644,
+    872,
+    198,
+    151645,
+    198,
+    151644,
+    77091,
+    198
+  ],
+  "max_tokens": 8,
+  "temperature": 0.0,
+  "output_token_ids": [
+    151667,
+    198,
+    32313,
+    11,
+    279,
+    1196,
+    1101,
+    4588
+  ],
+  "elapsed_seconds": 3.429851613999972,
+  "cuda_device": "NVIDIA GeForce RTX 3080 Laptop GPU",
+  "kv_cache": {
+    "shape": [
+      2,
+      28,
+      424,
+      256,
+      8,
+      128
+    ],
+    "dtype": "torch.bfloat16",
+    "device": "cuda:0",
+    "block_size_tokens": 256,
+    "num_gpu_blocks": 424,
+    "bytes_per_complete_block": 29360128
+  }
+}

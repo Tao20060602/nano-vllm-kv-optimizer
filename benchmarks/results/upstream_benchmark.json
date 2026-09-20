@@ -1,0 +1,10 @@
+{
+  "model": "/opt/models/Qwen3-0.6B",
+  "seed": 0,
+  "num_seqs": 256,
+  "max_input_len": 1024,
+  "max_output_len": 1024,
+  "total_output_tokens": 133966,
+  "elapsed_seconds": 57.88918685913086,
+  "throughput_tokens_per_second": 2314.180026850205
+}

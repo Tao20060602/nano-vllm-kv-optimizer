@@ -21,9 +21,15 @@ class ModelStageTimer:
             self.start = perf_counter()
         return self
 
-    def elapsed_ms(self) -> float:
+    def __exit__(self, exc_type, exc_value, traceback) -> bool:
         if self.start_event is not None:
             self.end_event.record()
+        else:
+            self.end = perf_counter()
+        return False
+
+    def elapsed_ms(self) -> float:
+        if self.start_event is not None:
             self.end_event.synchronize()
             return float(self.start_event.elapsed_time(self.end_event))
-        return (perf_counter() - self.start) * 1000.0
+        return (self.end - self.start) * 1000.0

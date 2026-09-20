@@ -4,14 +4,19 @@ This document describes the imported commit, not a hypothetical vLLM design. It 
 
 ## Request call chain
 
-`LLM.generate()` in `nanovllm/engine/llm_engine.py` tokenizes prompts and calls `add_request()`. Each prompt becomes a `Sequence` and enters `Scheduler.waiting`.
+`LLM.generate()` in `nanovllm/engine/llm_engine.py` accepts text or explicit
+token IDs and calls `add_request()`. Text is encoded by the Hugging Face
+tokenizer. Each prompt becomes a `Sequence` and enters `Scheduler.waiting`.
 
 Each `LLMEngine.step()` asks `Scheduler.schedule()` for work:
 
 1. During prefill, `BlockManager.can_allocate()` walks complete token blocks using a chained `xxhash` value. Existing matching GPU blocks are counted as cached blocks; `BlockManager.allocate()` puts those physical GPU block IDs in `Sequence.block_table` and allocates the remaining blocks.
 2. `ModelRunner.run(seqs, is_prefill=True)` builds input IDs, positions, cumulative query/key lengths, slot mappings, and (when a prefix is present) a GPU block table in `prepare_prefill()`.
 3. The model runs layer by layer. `Attention.forward()` writes newly computed K/V into each layer's cache using the Triton `store_kvcache` kernel, then FlashAttention reads either the current K/V or the GPU block table.
-4. `Scheduler.postprocess()` hashes newly completed blocks, updates cached-token counts, appends the sampled token, and eventually releases physical blocks.
+4. `Sampler.forward()` uses `argmax` when every temperature is zero; otherwise it
+   uses exponential-noise sampling. `Scheduler.postprocess()` hashes newly
+   completed blocks, updates cached-token counts, appends the sampled token, and
+   eventually releases physical blocks.
 5. Decode uses `prepare_decode()`, where each sequence contributes its last token, one cache slot, context length, and the GPU block table. FlashAttention's paged KV path reads the physical blocks.
 
 ## KV layout and ownership
@@ -25,6 +30,23 @@ kv_cache.shape = [2, num_hidden_layers, num_gpu_blocks,
 
 Index `0` is K and index `1` is V. Each attention layer receives a view of one layer's physical GPU blocks through `module.k_cache` and `module.v_cache`. The cache uses the model dtype. With tensor parallel size one, `local_num_kv_heads == hf_config.num_key_value_heads`.
 
+For the verified local Qwen3-0.6B model and TP=1, the concrete tensor is:
+
+```text
+shape = [2, 28, 424, 256, 8, 128]
+dtype = bfloat16
+device = cuda:0
+bytes per physical block
+  = 2 (K,V) * 28 layers * 256 tokens * 8 KV heads * 128 head_dim * 2 bytes
+  = 29,360,128 bytes (28 MiB)
+```
+
+The number of physical blocks (`424` in this run) is runtime-dependent because
+`allocate_kv_cache()` derives it from free GPU memory and
+`gpu_memory_utilization`. The other dimensions come from the pinned model
+configuration and the configured 256-token block size. This evidence is recorded
+in `benchmarks/results/deterministic_baseline.json`.
+
 The logical/physical distinction is important:
 
 - a `Sequence` owns a logical ordered `block_table`;
@@ -35,9 +57,21 @@ The logical/physical distinction is important:
 
 ## Existing prefix-cache semantics
 
-`BlockManager.compute_hash(token_ids, prefix)` chains the previous hash with the current token block. Only complete blocks are considered by `can_allocate()`, so a non-aligned tail is recomputed. A hash hit is additionally checked against the stored token IDs. `hash_blocks()` registers blocks after execution.
+`BlockManager.compute_hash(token_ids, prefix)` chains the previous 64-bit xxHash
+with the current token block. `can_allocate()` walks blocks from the beginning,
+looks up each chained hash, and additionally compares stored token IDs to reject
+hash collisions. It stops at the first miss. The final sequence block is excluded
+from lookup even when block-aligned, ensuring at least one block is scheduled to
+produce logits; a non-aligned tail is likewise recomputed. `hash_blocks()`
+registers newly completed blocks after execution.
 
-This is GPU-resident prefix caching only. A physical GPU block can disappear when its reference count reaches zero and it is returned to the free deque. There is no persistent CPU slot, CPU eviction policy, transfer metric, model/layout fingerprint, or cross-GPU-eviction restore path in the upstream snapshot. Those are the NanoKV contribution and must be implemented without treating a GPU block ID as a durable identity.
+This is GPU-resident prefix caching only. When a physical block's reference count
+reaches zero it returns to the free deque. Its hash metadata remains usable only
+until that same physical block is allocated for new data, at which point the old
+hash entry is removed. There is no persistent CPU slot, CPU eviction policy,
+transfer metric, model/layout fingerprint, or restore path after GPU reuse in the
+upstream snapshot. Those are the NanoKV contribution and must not treat a GPU
+block ID as durable identity.
 
 ## Baseline invariants for NanoKV
 

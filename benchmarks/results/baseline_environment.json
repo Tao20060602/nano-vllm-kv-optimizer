@@ -1,29 +1,31 @@
 {
-  "recorded_at_utc": "2026-09-19T00:00:00Z",
-  "platform": "Windows (PowerShell; recorded before Python installation)",
-  "python": null,
-  "executable": null,
+  "recorded_at_utc": "2026-09-20T05:11:42.503450+00:00",
+  "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+  "python": "3.12.3 (main, Aug 31 2026, 10:18:26) [GCC 13.3.0]",
+  "executable": "/opt/nano-vllm/.venv/bin/python",
   "packages": {
-    "torch": false,
-    "transformers": false,
-    "triton": false,
-    "flash_attn": false,
-    "xxhash": false
+    "torch": true,
+    "transformers": true,
+    "triton": true,
+    "flash_attn": true,
+    "xxhash": true
   },
   "torch": {
-    "installed": false,
-    "cuda_available": null,
-    "cuda_version": null,
-    "device_count": null,
-    "devices": []
+    "installed": true,
+    "version": "2.7.1+cu128",
+    "cuda_available": true,
+    "cuda_version": "12.8",
+    "device_count": 1,
+    "devices": [
+      "NVIDIA GeForce RTX 3080 Laptop GPU"
+    ]
   },
-  "model_path": "C:/Users/28898/huggingface/Qwen3-0.6B",
-  "model_exists": false,
-  "git_head": null,
-  "git_status": "No commits yet on main",
+  "model_path": "/opt/models/Qwen3-0.6B",
+  "model_exists": true,
+  "git_head": "da833780cb1640f43a54fa33bc4096bcbd2dc1db",
+  "git_status": "## main...origin/main [ahead 2]\n M bench.py\n M benchmarks/baseline.py\n M benchmarks/deterministic_baseline.py\n M example.py",
   "baseline_runs": {
-    "example.py": "not_run_missing_python_and_model",
-    "bench.py": "not_run_missing_python_and_model"
-  },
-  "note": "This is an environment record, not a performance result. Re-run benchmarks/baseline.py after installing Python/PyTorch/CUDA and the model."
+    "example.py": "not_run_by_probe",
+    "bench.py": "not_run_by_probe"
+  }
 }

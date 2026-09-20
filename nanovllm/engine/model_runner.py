@@ -216,10 +216,12 @@ class ModelRunner:
     def run(self, seqs: list[Sequence], is_prefill: bool) -> list[int]:
         input_ids, positions = self.prepare_prefill(seqs) if is_prefill else self.prepare_decode(seqs)
         temperatures = self.prepare_sample(seqs) if self.rank == 0 else None
-        timer = ModelStageTimer(self.metrics is not None and self.rank == 0, torch)
-        with timer:
+        if self.metrics is None or self.rank != 0:
             logits = self.run_model(input_ids, positions, is_prefill)
-        if self.metrics is not None and self.rank == 0:
+        else:
+            timer = ModelStageTimer(True, torch)
+            with timer:
+                logits = self.run_model(input_ids, positions, is_prefill)
             elapsed_ms = timer.elapsed_ms()
             if is_prefill:
                 self.metrics.record_prefill(elapsed_ms)
