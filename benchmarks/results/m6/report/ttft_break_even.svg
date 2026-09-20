@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="520">
+<rect width="100%" height="100%" fill="white"/>
+<line x1="80" y1="40" x2="80" y2="430" stroke="black"/>
+<line x1="80" y1="430" x2="840" y2="430" stroke="black"/>
+<text x="450" y="505" text-anchor="middle">Reusable prefix tokens</text>
+<text x="18" y="240" transform="rotate(-90 18 240)" text-anchor="middle">TTFT p50 (ms)</text>
+<text x="80.0" y="455" text-anchor="middle">256</text>
+<text x="270.0" y="455" text-anchor="middle">512</text>
+<text x="460.0" y="455" text-anchor="middle">1024</text>
+<text x="650.0" y="455" text-anchor="middle">2048</text>
+<text x="840.0" y="455" text-anchor="middle">4096</text>
+<polyline points="80.0,357.736478215386 270.0,360.7240833899598 460.0,342.19786418072624 650.0,262.6934504910446 840.0,75.4545454545455" fill="none" stroke="#d95f02" stroke-width="3"/>
+<circle cx="80.0" cy="357.736478215386" r="4" fill="#d95f02"/>
+<circle cx="270.0" cy="360.7240833899598" r="4" fill="#d95f02"/>
+<circle cx="460.0" cy="342.19786418072624" r="4" fill="#d95f02"/>
+<circle cx="650.0" cy="262.6934504910446" r="4" fill="#d95f02"/>
+<circle cx="840.0" cy="75.4545454545455" r="4" fill="#d95f02"/>
+<rect x="650" y="15" width="14" height="4" fill="#d95f02"/>
+<text x="670" y="25">cold</text>
+<polyline points="80.0,316.2640485467816 270.0,311.3236444642573 460.0,282.59562173820336 650.0,331.6143007256357 840.0,322.04341666775616" fill="none" stroke="#1b9e77" stroke-width="3"/>
+<circle cx="80.0" cy="316.2640485467816" r="4" fill="#1b9e77"/>
+<circle cx="270.0" cy="311.3236444642573" r="4" fill="#1b9e77"/>
+<circle cx="460.0" cy="282.59562173820336" r="4" fill="#1b9e77"/>
+<circle cx="650.0" cy="331.6143007256357" r="4" fill="#1b9e77"/>
+<circle cx="840.0" cy="322.04341666775616" r="4" fill="#1b9e77"/>
+<rect x="650" y="35" width="14" height="4" fill="#1b9e77"/>
+<text x="670" y="45">gpu</text>
+<polyline points="80.0,344.1945217211888 270.0,331.8591710463303 460.0,307.1242676858078 650.0,267.68782700755173 840.0,186.2378641504251" fill="none" stroke="#7570b3" stroke-width="3"/>
+<circle cx="80.0" cy="344.1945217211888" r="4" fill="#7570b3"/>
+<circle cx="270.0" cy="331.8591710463303" r="4" fill="#7570b3"/>
+<circle cx="460.0" cy="307.1242676858078" r="4" fill="#7570b3"/>
+<circle cx="650.0" cy="267.68782700755173" r="4" fill="#7570b3"/>
+<circle cx="840.0" cy="186.2378641504251" r="4" fill="#7570b3"/>
+<rect x="650" y="55" width="14" height="4" fill="#7570b3"/>
+<text x="670" y="65">cpu_pageable</text>
+<polyline points="80.0,343.4126156209191 270.0,341.30446460699005 460.0,321.4295832573587 650.0,276.5584715914048 840.0,255.86055909297554" fill="none" stroke="#e7298a" stroke-width="3"/>
+<circle cx="80.0" cy="343.4126156209191" r="4" fill="#e7298a"/>
+<circle cx="270.0" cy="341.30446460699005" r="4" fill="#e7298a"/>
+<circle cx="460.0" cy="321.4295832573587" r="4" fill="#e7298a"/>
+<circle cx="650.0" cy="276.5584715914048" r="4" fill="#e7298a"/>
+<circle cx="840.0" cy="255.86055909297554" r="4" fill="#e7298a"/>
+<rect x="650" y="75" width="14" height="4" fill="#e7298a"/>
+<text x="670" y="85">cpu_pinned</text>
+</svg>
