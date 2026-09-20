@@ -11,6 +11,7 @@ from nanovllm.layers.sampler import Sampler
 from nanovllm.utils.context import set_context, get_context, reset_context
 from nanovllm.utils.loader import load_model
 from nanovllm.kvdb.timing import ModelStageTimer
+from nanovllm.kvdb.store.gpu import GPUBlockStore
 
 
 class ModelRunner:
@@ -115,11 +116,17 @@ class ModelRunner:
         config.num_kvcache_blocks = int(total * config.gpu_memory_utilization - used - peak + current) // block_bytes
         assert config.num_kvcache_blocks > 0
         self.kv_cache = torch.empty(2, hf_config.num_hidden_layers, config.num_kvcache_blocks, self.block_size, num_kv_heads, head_dim)
+        self.gpu_block_store = None
+        if config.enable_reusable_cache:
+            self.gpu_block_store = GPUBlockStore(self.kv_cache, config.cache_fingerprint)
         layer_id = 0
         for module in self.model.modules():
             if hasattr(module, "k_cache") and hasattr(module, "v_cache"):
-                module.k_cache = self.kv_cache[0, layer_id]
-                module.v_cache = self.kv_cache[1, layer_id]
+                if self.gpu_block_store is None:
+                    module.k_cache = self.kv_cache[0, layer_id]
+                    module.v_cache = self.kv_cache[1, layer_id]
+                else:
+                    module.k_cache, module.v_cache = self.gpu_block_store.layer_cache(layer_id)
                 layer_id += 1
 
     def prepare_block_tables(self, seqs: list[Sequence]):

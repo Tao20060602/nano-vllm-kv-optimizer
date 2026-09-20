@@ -1,6 +1,9 @@
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from transformers import AutoConfig
+
+from nanovllm.kvdb.fingerprint import build_cache_fingerprint
+from nanovllm.kvdb.types import CacheFingerprint
 
 
 @dataclass(slots=True)
@@ -17,6 +20,8 @@ class Config:
     kvcache_block_size: int = 256
     num_kvcache_blocks: int = -1
     enable_cache_metrics: bool = False
+    enable_reusable_cache: bool = False
+    cache_fingerprint: CacheFingerprint | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self):
         assert os.path.isdir(self.model)
@@ -24,3 +29,10 @@ class Config:
         assert 1 <= self.tensor_parallel_size <= 8
         self.hf_config = AutoConfig.from_pretrained(self.model)
         self.max_model_len = min(self.max_model_len, self.hf_config.max_position_embeddings)
+        if self.enable_reusable_cache:
+            self.cache_fingerprint = build_cache_fingerprint(
+                self.model,
+                self.hf_config,
+                block_size=self.kvcache_block_size,
+                tensor_parallel_size=self.tensor_parallel_size,
+            )

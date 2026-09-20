@@ -17,7 +17,7 @@ from nanovllm.kvdb.metrics import StageTimer
 class LLMEngine:
 
     def __init__(self, model, **kwargs):
-        config_fields = {field.name for field in fields(Config)}
+        config_fields = {field.name for field in fields(Config) if field.init}
         config_kwargs = {k: v for k, v in kwargs.items() if k in config_fields}
         config = Config(model, **config_kwargs)
         self.metrics = CacheMetrics() if config.enable_cache_metrics else None

@@ -13,7 +13,7 @@
   "max_tokens": 8,
   "temperature": 0.0,
   "cache_metrics_enabled": false,
-  "reusable_cache_enabled": false,
+  "reusable_cache_enabled": true,
   "output_token_ids": [
     151667,
     198,
@@ -24,7 +24,7 @@
     1101,
     4588
   ],
-  "elapsed_seconds": 1.6646876750000104,
+  "elapsed_seconds": 1.8598385920000027,
   "cuda_device": "NVIDIA GeForce RTX 3080 Laptop GPU",
   "kv_cache": {
     "shape": [
@@ -40,5 +40,10 @@
     "block_size_tokens": 256,
     "num_gpu_blocks": 424,
     "bytes_per_complete_block": 29360128
+  },
+  "gpu_block_store": {
+    "capacity_blocks": 424,
+    "bytes_per_block": 29360128,
+    "fingerprint_digest": "6c9872a4cd68726e29d7bd8cdfad7e43d0f4e67a54a2e20b1ec5fb405c2abb97"
   }
 }

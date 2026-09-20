@@ -24,6 +24,7 @@ def make_prompt(first: list[int] | None = None, change_at: int | None = None) ->
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=Path, required=True)
+    parser.add_argument("--enable-reusable-cache", action="store_true")
     parser.add_argument(
         "--output",
         type=Path,
@@ -38,6 +39,7 @@ def main() -> None:
         tensor_parallel_size=1,
         enable_cache_metrics=True,
         max_model_len=1024,
+        enable_reusable_cache=args.enable_reusable_cache,
     )
 
     base = make_prompt()
@@ -79,6 +81,7 @@ def main() -> None:
         "model": str(args.model),
         "device": torch.cuda.get_device_name(),
         "block_size": llm.model_runner.config.kvcache_block_size,
+        "reusable_cache_enabled": args.enable_reusable_cache,
         "sampling": {"temperature": 0.0, "max_tokens": 2, "ignore_eos": True},
         "cases": results,
     }

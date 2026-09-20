@@ -24,6 +24,7 @@ def main() -> None:
     parser.add_argument("--output", type=Path, default=Path("benchmarks/results/deterministic_baseline.json"))
     parser.add_argument("--max-tokens", type=int, default=1)
     parser.add_argument("--enable-cache-metrics", action="store_true")
+    parser.add_argument("--enable-reusable-cache", action="store_true")
     args = parser.parse_args()
     if not args.model.is_dir():
         raise SystemExit(f"model directory does not exist: {args.model}")
@@ -40,6 +41,7 @@ def main() -> None:
         enforce_eager=True,
         tensor_parallel_size=1,
         enable_cache_metrics=args.enable_cache_metrics,
+        enable_reusable_cache=args.enable_reusable_cache,
     )
     torch.cuda.synchronize()
     start = time.perf_counter()
@@ -63,6 +65,7 @@ def main() -> None:
         "max_tokens": args.max_tokens,
         "temperature": 0.0,
         "cache_metrics_enabled": args.enable_cache_metrics,
+        "reusable_cache_enabled": args.enable_reusable_cache,
         "output_token_ids": outputs[0]["token_ids"],
         "elapsed_seconds": elapsed,
         "cuda_device": torch.cuda.get_device_name(),
@@ -77,6 +80,13 @@ def main() -> None:
     }
     if args.enable_cache_metrics:
         result["cache_metrics"] = llm.get_cache_metrics()
+    if args.enable_reusable_cache:
+        store = llm.model_runner.gpu_block_store
+        result["gpu_block_store"] = {
+            "capacity_blocks": store.capacity_blocks,
+            "bytes_per_block": store.bytes_per_block,
+            "fingerprint_digest": store.fingerprint.digest,
+        }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(result, indent=2))
