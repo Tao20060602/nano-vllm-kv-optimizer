@@ -51,8 +51,8 @@ class BlockManager:
         self.used_block_ids.remove(block_id)
         self.free_block_ids.append(block_id)
 
-    def can_allocate(self, seq: Sequence) -> int:
-        timer = StageTimer() if self.metrics is not None else None
+    def can_allocate(self, seq: Sequence, *, record_metrics: bool = True) -> int:
+        timer = StageTimer() if self.metrics is not None and record_metrics else None
         if timer is not None:
             timer.__enter__()
         h = -1
@@ -67,13 +67,16 @@ class BlockManager:
             num_cached_blocks += 1
             if block_id in self.used_block_ids:
                 num_new_blocks -= 1
-        if self.metrics is not None and not seq.metrics_lookup_recorded:
+        if self.metrics is not None and record_metrics and not seq.metrics_lookup_recorded:
             self.metrics.record_lookup(num_cached_blocks, num_cached_blocks * self.block_size, len(seq))
             self.metrics.record_lookup_time(timer.elapsed_ms())
             seq.metrics_lookup_recorded = True
         if len(self.free_block_ids) < num_new_blocks:
             return -1
         return num_cached_blocks
+
+    def can_allocate_fresh(self, seq: Sequence) -> bool:
+        return len(self.free_block_ids) >= seq.num_blocks
 
     def allocate(self, seq: Sequence, num_cached_blocks: int):
         assert not seq.block_table
@@ -93,6 +96,37 @@ class BlockManager:
         for i in range(num_cached_blocks, seq.num_blocks):
             seq.block_table.append(self._allocate_block())
         seq.num_cached_tokens = num_cached_blocks * self.block_size
+
+    def allocate_for_cpu_restore(self, seq: Sequence, num_cached_blocks: int):
+        assert not seq.block_table
+        assert self.can_allocate_fresh(seq)
+        for _ in range(seq.num_blocks):
+            seq.block_table.append(self._allocate_block())
+        seq.num_cached_tokens = num_cached_blocks * self.block_size
+        seq.cpu_restore_pending = True
+        seq.cache_hit_tier = "cpu"
+
+    def register_restored_blocks(self, seq: Sequence, num_restored_blocks: int):
+        prefix_hash = -1
+        for i in range(num_restored_blocks):
+            block = self.blocks[seq.block_table[i]]
+            token_ids = seq.block(i)
+            prefix_hash = self.compute_hash(token_ids, prefix_hash)
+            block.update(prefix_hash, token_ids)
+            self.hash_to_block_id[prefix_hash] = block.block_id
+
+    def evict_free_cached_blocks(self) -> int:
+        evicted = 0
+        for block_id in self.free_block_ids:
+            block = self.blocks[block_id]
+            if block.hash == -1:
+                continue
+            if self.hash_to_block_id.get(block.hash) == block_id:
+                del self.hash_to_block_id[block.hash]
+            block.hash = -1
+            block.token_ids = []
+            evicted += 1
+        return evicted
 
     def deallocate(self, seq: Sequence):
         for block_id in reversed(seq.block_table):

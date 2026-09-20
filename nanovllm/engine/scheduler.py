@@ -3,6 +3,7 @@ from collections import deque
 from nanovllm.config import Config
 from nanovllm.engine.sequence import Sequence, SequenceStatus
 from nanovllm.engine.block_manager import BlockManager
+from nanovllm.kvdb.metrics import StageTimer
 
 
 class Scheduler:
@@ -33,16 +34,50 @@ class Scheduler:
             if remaining == 0:
                 break
             if not seq.block_table:
-                num_cached_blocks = self.block_manager.can_allocate(seq)
+                timer = StageTimer() if self.block_manager.metrics is not None else None
+                if timer is not None:
+                    timer.__enter__()
+                gpu_cached_blocks = self.block_manager.can_allocate(
+                    seq, record_metrics=False
+                )
+                cpu_cached_blocks = (
+                    0 if seq.cpu_restore_failed else len(seq.cpu_cache_handles)
+                )
+                use_cpu = (
+                    cpu_cached_blocks > max(gpu_cached_blocks, 0)
+                    and self.block_manager.can_allocate_fresh(seq)
+                )
+                if use_cpu:
+                    num_cached_blocks = cpu_cached_blocks
+                else:
+                    num_cached_blocks = gpu_cached_blocks
                 if num_cached_blocks == -1:
                     break
+                if self.block_manager.metrics is not None and not seq.metrics_lookup_recorded:
+                    tier = "cpu" if use_cpu else "gpu"
+                    self.block_manager.metrics.record_lookup(
+                        num_cached_blocks,
+                        num_cached_blocks * self.block_size,
+                        len(seq),
+                        tier=tier,
+                    )
+                    self.block_manager.metrics.record_lookup_time(
+                        seq.cpu_lookup_time_ms + timer.elapsed_ms()
+                    )
+                    seq.metrics_lookup_recorded = True
                 num_tokens = seq.num_tokens - num_cached_blocks * self.block_size
             else:
                 num_tokens = seq.num_tokens - seq.num_cached_tokens
             if remaining < num_tokens and scheduled_seqs:  # only allow chunked prefill for the first seq
                 break
             if not seq.block_table:
-                self.block_manager.allocate(seq, num_cached_blocks)
+                if use_cpu:
+                    self.block_manager.allocate_for_cpu_restore(
+                        seq, num_cached_blocks
+                    )
+                else:
+                    self.block_manager.allocate(seq, num_cached_blocks)
+                    seq.cache_hit_tier = "gpu" if num_cached_blocks else "miss"
             seq.num_scheduled_tokens = min(num_tokens, remaining)
             num_batched_tokens += seq.num_scheduled_tokens
             if seq.num_cached_tokens + seq.num_scheduled_tokens == seq.num_tokens:
@@ -71,6 +106,31 @@ class Scheduler:
         assert scheduled_seqs
         self.running.extendleft(reversed(scheduled_seqs))
         return scheduled_seqs, False
+
+    def confirm_cpu_restore(self, seq: Sequence) -> None:
+        restored_blocks = len(seq.cpu_cache_handles)
+        self.block_manager.register_restored_blocks(seq, restored_blocks)
+        seq.cpu_restore_pending = False
+
+    def rollback_cpu_restore(self, seq: Sequence) -> None:
+        matched_blocks = len(seq.cpu_cache_handles)
+        matched_tokens = matched_blocks * self.block_size
+        if seq in self.running:
+            self.running.remove(seq)
+        self.block_manager.deallocate(seq)
+        seq.status = SequenceStatus.WAITING
+        seq.is_prefill = True
+        seq.num_scheduled_tokens = 0
+        seq.cpu_restore_pending = False
+        seq.cpu_restore_failed = True
+        seq.cpu_cache_handles = ()
+        seq.cache_hit_tier = "miss"
+        if seq not in self.waiting:
+            self.waiting.appendleft(seq)
+        if self.block_manager.metrics is not None:
+            self.block_manager.metrics.record_cpu_restore_fallback(
+                matched_blocks, matched_tokens
+            )
 
     def preempt(self, seq: Sequence):
         seq.status = SequenceStatus.WAITING

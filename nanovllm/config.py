@@ -21,12 +21,22 @@ class Config:
     num_kvcache_blocks: int = -1
     enable_cache_metrics: bool = False
     enable_reusable_cache: bool = False
+    enable_cpu_cache: bool = False
+    cpu_cache_capacity_bytes: int = 256 * 1024 * 1024
+    cpu_cache_pinned: bool = False
     cache_fingerprint: CacheFingerprint | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self):
         assert os.path.isdir(self.model)
         assert self.kvcache_block_size % 256 == 0
         assert 1 <= self.tensor_parallel_size <= 8
+        if self.enable_cpu_cache:
+            if self.tensor_parallel_size != 1:
+                raise ValueError("CPU cache currently requires tensor_parallel_size=1")
+            if not self.enforce_eager:
+                raise ValueError("CPU cache currently requires enforce_eager=True")
+            self.enable_reusable_cache = True
+            self.max_num_seqs = 1
         self.hf_config = AutoConfig.from_pretrained(self.model)
         self.max_model_len = min(self.max_model_len, self.hf_config.max_position_embeddings)
         if self.enable_reusable_cache:

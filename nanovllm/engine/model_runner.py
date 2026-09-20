@@ -12,6 +12,8 @@ from nanovllm.utils.context import set_context, get_context, reset_context
 from nanovllm.utils.loader import load_model
 from nanovllm.kvdb.timing import ModelStageTimer
 from nanovllm.kvdb.store.gpu import GPUBlockStore
+from nanovllm.kvdb.store.cpu import CPUBlockStore
+from nanovllm.kvdb.coordinator import ContextDB
 
 
 class ModelRunner:
@@ -25,6 +27,7 @@ class ModelRunner:
         self.rank = rank
         self.event = event
         self.metrics = None
+        self.last_cpu_store_error = None
 
         dist.init_process_group("nccl", "tcp://localhost:2333", world_size=self.world_size, rank=rank)
         torch.cuda.set_device(rank)
@@ -117,8 +120,17 @@ class ModelRunner:
         assert config.num_kvcache_blocks > 0
         self.kv_cache = torch.empty(2, hf_config.num_hidden_layers, config.num_kvcache_blocks, self.block_size, num_kv_heads, head_dim)
         self.gpu_block_store = None
+        self.cpu_block_store = None
+        self.context_db = None
         if config.enable_reusable_cache:
             self.gpu_block_store = GPUBlockStore(self.kv_cache, config.cache_fingerprint)
+        if config.enable_cpu_cache:
+            self.cpu_block_store = CPUBlockStore(
+                config.cache_fingerprint,
+                capacity_bytes=config.cpu_cache_capacity_bytes,
+                pinned=config.cpu_cache_pinned,
+            )
+            self.context_db = ContextDB(self.cpu_block_store)
         layer_id = 0
         for module in self.model.modules():
             if hasattr(module, "k_cache") and hasattr(module, "v_cache"):
@@ -128,6 +140,69 @@ class ModelRunner:
                 else:
                     module.k_cache, module.v_cache = self.gpu_block_store.layer_cache(layer_id)
                 layer_id += 1
+
+    def lookup_cpu_context(self, token_ids: list[int]):
+        if self.context_db is None:
+            return None
+        return self.context_db.create_session(token_ids).lookup
+
+    def restore_cpu_blocks(self, seqs: list[Sequence]) -> None:
+        if self.cpu_block_store is None or self.gpu_block_store is None:
+            raise RuntimeError("CPU cache is not initialized")
+        before = self.cpu_block_store.stats()
+        try:
+            for seq in seqs:
+                if not seq.cpu_restore_pending:
+                    continue
+                if len(seq.cpu_cache_handles) * self.block_size != seq.num_cached_tokens:
+                    raise RuntimeError("CPU restore plan does not match cached-token count")
+                for logical_id, handle in enumerate(seq.cpu_cache_handles):
+                    gpu_block_id = seq.block_table[logical_id]
+                    self.cpu_block_store.load_into(
+                        handle, self.gpu_block_store.block_view(gpu_block_id)
+                    )
+        finally:
+            after = self.cpu_block_store.stats()
+            if self.metrics is not None:
+                self.metrics.record_load(
+                    after["load_time_ms"] - before["load_time_ms"],
+                    after["h2d_bytes"] - before["h2d_bytes"],
+                )
+
+    def persist_cpu_contexts(self, seqs: list[Sequence]) -> None:
+        if self.context_db is None or self.gpu_block_store is None:
+            return
+        before = self.cpu_block_store.stats()
+        for seq in seqs:
+            try:
+                end = seq.num_cached_tokens + seq.num_scheduled_tokens
+                if end < seq.num_prompt_tokens:
+                    continue
+                session = self.context_db.create_session(
+                    seq.prompt_token_ids, record_stats=False
+                )
+                full_blocks = seq.num_prompt_tokens // self.block_size
+                payloads = [
+                    self.gpu_block_store.read_block(seq.block_table[logical_id])
+                    for logical_id in range(session.matched_blocks, full_blocks)
+                ]
+                self.context_db.store_session(session, payloads)
+            except Exception as exc:
+                # Persistence is an optimization. A failed D2H store must not
+                # fail an otherwise-correct inference request.
+                self.last_cpu_store_error = repr(exc)
+                if self.metrics is not None:
+                    self.metrics.record_cpu_store_failure()
+        after = self.cpu_block_store.stats()
+        if self.metrics is not None:
+            self.metrics.record_store(
+                after["store_time_ms"] - before["store_time_ms"],
+                after["d2h_bytes"] - before["d2h_bytes"],
+                after["evictions"] - before["evictions"],
+            )
+
+    def cpu_cache_stats(self) -> dict:
+        return {} if self.context_db is None else self.context_db.stats()
 
     def prepare_block_tables(self, seqs: list[Sequence]):
         max_len = max(len(seq.block_table) for seq in seqs)
@@ -223,6 +298,8 @@ class ModelRunner:
     def run(self, seqs: list[Sequence], is_prefill: bool) -> list[int]:
         input_ids, positions = self.prepare_prefill(seqs) if is_prefill else self.prepare_decode(seqs)
         temperatures = self.prepare_sample(seqs) if self.rank == 0 else None
+        if self.metrics is not None and self.rank == 0:
+            self.metrics.record_executed_tokens(input_ids.numel(), is_prefill=is_prefill)
         if self.metrics is None or self.rank != 0:
             logits = self.run_model(input_ids, positions, is_prefill)
         else:

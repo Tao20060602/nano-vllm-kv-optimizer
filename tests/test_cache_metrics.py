@@ -17,6 +17,8 @@ def test_metrics_snapshot_is_structured_and_serializable():
         "cpu_hit_blocks": 0,
         "reused_tokens": 8,
         "recomputed_tokens": 4,
+        "prefill_executed_tokens": 0,
+        "decode_executed_tokens": 0,
         "lookup_time_ms": 1.5,
         "load_time_ms": 0.0,
         "store_time_ms": 0.0,
@@ -27,6 +29,8 @@ def test_metrics_snapshot_is_structured_and_serializable():
         "h2d_bytes": 0,
         "d2h_bytes": 0,
         "eviction_count": 0,
+        "cpu_load_failures": 0,
+        "cpu_store_failures": 0,
     }
 
 

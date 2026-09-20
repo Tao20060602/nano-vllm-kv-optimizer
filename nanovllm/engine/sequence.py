@@ -25,6 +25,11 @@ class Sequence:
         self.num_cached_tokens = 0
         self.num_scheduled_tokens = 0
         self.metrics_lookup_recorded = False
+        self.cpu_cache_handles = ()
+        self.cpu_lookup_time_ms = 0.0
+        self.cpu_restore_pending = False
+        self.cpu_restore_failed = False
+        self.cache_hit_tier = "miss"
         self.is_prefill = True
         self.block_table = []
         self.temperature = sampling_params.temperature

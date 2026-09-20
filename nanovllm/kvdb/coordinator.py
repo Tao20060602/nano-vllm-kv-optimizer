@@ -52,7 +52,9 @@ class ContextDB:
         self._hits = 0
         self._misses = 0
 
-    def create_session(self, token_ids: Iterable[int]) -> ContextSession:
+    def create_session(
+        self, token_ids: Iterable[int], *, record_stats: bool = True
+    ) -> ContextSession:
         tokens = tuple(token_ids)
         while True:
             lookup = self.index.lookup(tokens, self.fingerprint)
@@ -67,11 +69,12 @@ class ContextDB:
                 self.index.remove_handle(handle)
         for handle in lookup.cpu_handles:
             self.store.touch(handle)
-        self._requests += 1
-        if lookup.matched_blocks:
-            self._hits += 1
-        else:
-            self._misses += 1
+        if record_stats:
+            self._requests += 1
+            if lookup.matched_blocks:
+                self._hits += 1
+            else:
+                self._misses += 1
         return ContextSession(tokens, lookup, self.block_size)
 
     def store_session(

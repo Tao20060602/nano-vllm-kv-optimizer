@@ -37,6 +37,7 @@ class LLMEngine:
         config.eos = self.tokenizer.eos_token_id
         self.scheduler = Scheduler(config, self.metrics)
         self._ttft_recorded = False
+        self._last_cpu_restore_error = None
         atexit.register(self.exit)
 
     def exit(self):
@@ -49,6 +50,13 @@ class LLMEngine:
         if isinstance(prompt, str):
             prompt = self.tokenizer.encode(prompt)
         seq = Sequence(prompt, sampling_params)
+        if self.model_runner.context_db is not None:
+            timer = StageTimer()
+            timer.__enter__()
+            lookup = self.model_runner.lookup_cpu_context(prompt)
+            max_reusable_blocks = max((len(prompt) - 1) // Sequence.block_size, 0)
+            seq.cpu_cache_handles = lookup.cpu_handles[:max_reusable_blocks]
+            seq.cpu_lookup_time_ms = timer.elapsed_ms()
         self.scheduler.add(seq)
 
     def step(self):
@@ -57,7 +65,20 @@ class LLMEngine:
             timer.__enter__()
         seqs, is_prefill = self.scheduler.schedule()
         num_tokens = sum(seq.num_scheduled_tokens for seq in seqs) if is_prefill else -len(seqs)
+        pending_restores = [seq for seq in seqs if seq.cpu_restore_pending]
+        if pending_restores:
+            try:
+                self.model_runner.restore_cpu_blocks(pending_restores)
+                for seq in pending_restores:
+                    self.scheduler.confirm_cpu_restore(seq)
+            except Exception as exc:
+                self._last_cpu_restore_error = repr(exc)
+                for seq in pending_restores:
+                    self.scheduler.rollback_cpu_restore(seq)
+                return self.step()
         token_ids = self.model_runner.call("run", seqs, is_prefill)
+        if is_prefill:
+            self.model_runner.persist_cpu_contexts(seqs)
         self.scheduler.postprocess(seqs, token_ids, is_prefill)
         if self.metrics is not None and is_prefill and not self._ttft_recorded:
             self.metrics.record_ttft(timer.elapsed_ms())
@@ -77,6 +98,20 @@ class LLMEngine:
             self.metrics.reset()
             self._ttft_recorded = False
 
+    def clear_gpu_prefix_cache(self) -> int:
+        if not self.is_finished():
+            raise RuntimeError("GPU prefix cache can only be cleared while idle")
+        return self.scheduler.block_manager.evict_free_cached_blocks()
+
+    def get_cpu_cache_stats(self) -> dict:
+        return self.model_runner.cpu_cache_stats()
+
+    def get_last_cpu_restore_error(self) -> str | None:
+        return self._last_cpu_restore_error
+
+    def get_last_cpu_store_error(self) -> str | None:
+        return self.model_runner.last_cpu_store_error
+
     def generate(
         self,
         prompts: list[str] | list[list[int]],
@@ -88,6 +123,8 @@ class LLMEngine:
             # per-call window avoids mixing cumulative lookup counters with a
             # TTFT value that is meaningful only for the current request batch.
             self.reset_cache_metrics()
+        self._last_cpu_restore_error = None
+        self.model_runner.last_cpu_store_error = None
         pbar = tqdm(total=len(prompts), desc="Generating", dynamic_ncols=True, disable=not use_tqdm)
         if not isinstance(sampling_params, list):
             sampling_params = [sampling_params] * len(prompts)
