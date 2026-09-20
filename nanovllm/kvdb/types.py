@@ -72,8 +72,11 @@ class LookupResult:
 
 @dataclass(slots=True)
 class StoreStats:
-    reads: int = 0
-    writes: int = 0
-    bytes_read: int = 0
-    bytes_written: int = 0
+    stores: int = 0
+    loads: int = 0
+    deletes: int = 0
+    d2h_bytes: int = 0
+    h2d_bytes: int = 0
+    store_time_ms: float = 0.0
+    load_time_ms: float = 0.0
     evictions: int = 0

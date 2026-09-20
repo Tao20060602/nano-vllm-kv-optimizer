@@ -1,0 +1,66 @@
+{
+  "model": "/opt/models/Qwen3-0.6B",
+  "device": "NVIDIA GeForce RTX 3080 Laptop GPU",
+  "fingerprint_digest": "6c9872a4cd68726e29d7bd8cdfad7e43d0f4e67a54a2e20b1ec5fb405c2abb97",
+  "block_shape": [
+    2,
+    28,
+    256,
+    8,
+    128
+  ],
+  "dtype": "torch.bfloat16",
+  "bytes_per_block": 29360128,
+  "results": [
+    {
+      "mode": "pageable",
+      "round_trip_equal": true,
+      "handle": {
+        "slot_id": 0,
+        "generation": 1
+      },
+      "stats": {
+        "stores": 1,
+        "loads": 1,
+        "deletes": 0,
+        "d2h_bytes": 29360128,
+        "h2d_bytes": 29360128,
+        "store_time_ms": 20.75201200000265,
+        "load_time_ms": 4.616332999994199,
+        "evictions": 0,
+        "pinned": false,
+        "capacity_blocks": 2,
+        "capacity_bytes": 58720256,
+        "resident_blocks": 1,
+        "resident_bytes": 29360128,
+        "d2h_bandwidth_gbps": 1.414808742400315,
+        "h2d_bandwidth_gbps": 6.360054181541257
+      }
+    },
+    {
+      "mode": "pinned",
+      "round_trip_equal": true,
+      "handle": {
+        "slot_id": 0,
+        "generation": 1
+      },
+      "stats": {
+        "stores": 1,
+        "loads": 1,
+        "deletes": 0,
+        "d2h_bytes": 29360128,
+        "h2d_bytes": 29360128,
+        "store_time_ms": 4.102000000003159,
+        "load_time_ms": 2.463944999995249,
+        "evictions": 0,
+        "pinned": true,
+        "capacity_blocks": 2,
+        "capacity_bytes": 58720256,
+        "resident_blocks": 1,
+        "resident_bytes": 29360128,
+        "d2h_bandwidth_gbps": 7.157515358356264,
+        "h2d_bandwidth_gbps": 11.915902343622367
+      }
+    }
+  ]
+}
