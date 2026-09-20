@@ -88,9 +88,11 @@ The exact selector scans all keys, so it is a correctness oracle, not an
 acceleration result.  M8 must report selection latency separately from sparse
 attention latency and must not claim an end-to-end speedup.
 
-### M9: synchronous CPU offload and engine integration
+### M9: real-model trace and synchronous CPU-offload laboratory
 
-Add an opt-in eager decode path:
+Before changing scheduler ownership, capture one real Qwen attention layer's
+last-prefill-token query and complete causal K/V.  Replay that layer through a
+synchronous Route-A laboratory:
 
 ```text
 decode q
@@ -103,9 +105,9 @@ decode q
 
 V1 deliberately omits CUDA-stream overlap, double buffering and NUMA tuning.
 Metrics must separate search, gather, H2D and attention time.  GPU residency
-must be measured rather than inferred.  The initial long prefill still has to
-fit on GPU unless a later milestone adds chunked/sparse prefill; this project
-must not claim otherwise.
+must distinguish active K/V tensor bytes from the nano-vLLM allocator's reserved
+process memory.  This milestone validates real-model attention quality and the
+offload data path but does not yet feed sparse outputs back into generation.
 
 ### M10: representatives and Block-DIPRS
 
@@ -125,7 +127,18 @@ DIPRS-style search maintains a best score.  After an initial exploration
 budget, it only extends candidates whose score is at least `best - beta`.
 Candidate blocks are deduplicated and exactly refined before attention.
 
-### M11: final experiment and presentation
+### M11: opt-in engine integration, final experiment and presentation
+
+After the retrieval and offload mechanisms are validated independently, add a
+single-sequence eager integration path through the shared attention layer.  It
+must preserve the default dense path, use the selected packed K/V in the actual
+attention result, and document how scheduler ownership differs from the
+standalone laboratory.
+
+The initial long prefill still has to fit on GPU unless this milestone also adds
+chunked/sparse prefill.  The project must not claim otherwise.
+
+Then compare:
 
 Compare:
 
