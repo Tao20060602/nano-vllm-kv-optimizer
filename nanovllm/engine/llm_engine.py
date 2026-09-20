@@ -10,6 +10,8 @@ from nanovllm.sampling_params import SamplingParams
 from nanovllm.engine.sequence import Sequence
 from nanovllm.engine.scheduler import Scheduler
 from nanovllm.engine.model_runner import ModelRunner
+from nanovllm.kvdb.metrics import CacheMetrics
+from nanovllm.kvdb.metrics import StageTimer
 
 
 class LLMEngine:
@@ -18,6 +20,7 @@ class LLMEngine:
         config_fields = {field.name for field in fields(Config)}
         config_kwargs = {k: v for k, v in kwargs.items() if k in config_fields}
         config = Config(model, **config_kwargs)
+        self.metrics = CacheMetrics() if config.enable_cache_metrics else None
         Sequence.block_size = config.kvcache_block_size
         self.ps = []
         self.events = []
@@ -29,9 +32,11 @@ class LLMEngine:
             self.ps.append(process)
             self.events.append(event)
         self.model_runner = ModelRunner(config, 0, self.events)
+        self.model_runner.metrics = self.metrics
         self.tokenizer = AutoTokenizer.from_pretrained(config.model, use_fast=True)
         config.eos = self.tokenizer.eos_token_id
-        self.scheduler = Scheduler(config)
+        self.scheduler = Scheduler(config, self.metrics)
+        self._ttft_recorded = False
         atexit.register(self.exit)
 
     def exit(self):
@@ -47,15 +52,30 @@ class LLMEngine:
         self.scheduler.add(seq)
 
     def step(self):
+        timer = StageTimer() if self.metrics is not None else None
+        if timer is not None:
+            timer.__enter__()
         seqs, is_prefill = self.scheduler.schedule()
         num_tokens = sum(seq.num_scheduled_tokens for seq in seqs) if is_prefill else -len(seqs)
         token_ids = self.model_runner.call("run", seqs, is_prefill)
         self.scheduler.postprocess(seqs, token_ids, is_prefill)
+        if self.metrics is not None and is_prefill and not self._ttft_recorded:
+            self.metrics.record_ttft(timer.elapsed_ms())
+            self._ttft_recorded = True
         outputs = [(seq.seq_id, seq.completion_token_ids) for seq in seqs if seq.is_finished]
         return outputs, num_tokens
 
     def is_finished(self):
         return self.scheduler.is_finished()
+
+    def get_cache_metrics(self) -> dict:
+        """Return a JSON-serializable metrics snapshot for the last run."""
+        return {} if self.metrics is None else self.metrics.snapshot()
+
+    def reset_cache_metrics(self) -> None:
+        if self.metrics is not None:
+            self.metrics.reset()
+            self._ttft_recorded = False
 
     def generate(
         self,

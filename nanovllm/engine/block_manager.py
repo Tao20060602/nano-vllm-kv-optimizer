@@ -3,6 +3,7 @@ import xxhash
 import numpy as np
 
 from nanovllm.engine.sequence import Sequence
+from nanovllm.kvdb.metrics import StageTimer
 
 
 class Block:
@@ -25,8 +26,9 @@ class Block:
 
 class BlockManager:
 
-    def __init__(self, num_blocks: int, block_size: int):
+    def __init__(self, num_blocks: int, block_size: int, metrics=None):
         self.block_size = block_size
+        self.metrics = metrics
         self.blocks: list[Block] = [Block(i) for i in range(num_blocks)]
         self.hash_to_block_id: dict[int, int] = dict()
         self.free_block_ids: deque[int] = deque(range(num_blocks))
@@ -56,6 +58,9 @@ class BlockManager:
         self.free_block_ids.append(block_id)
 
     def can_allocate(self, seq: Sequence) -> int:
+        timer = StageTimer() if self.metrics is not None else None
+        if timer is not None:
+            timer.__enter__()
         h = -1
         num_cached_blocks = 0
         num_new_blocks = seq.num_blocks
@@ -68,6 +73,10 @@ class BlockManager:
             num_cached_blocks += 1
             if block_id in self.used_block_ids:
                 num_new_blocks -= 1
+        if self.metrics is not None and not seq.metrics_lookup_recorded:
+            self.metrics.record_lookup(num_cached_blocks, num_cached_blocks * self.block_size, len(seq))
+            self.metrics.record_lookup_time(timer.elapsed_ms())
+            seq.metrics_lookup_recorded = True
         if len(self.free_block_ids) < num_new_blocks:
             return -1
         return num_cached_blocks

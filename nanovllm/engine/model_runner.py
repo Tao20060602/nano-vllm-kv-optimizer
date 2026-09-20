@@ -10,6 +10,7 @@ from nanovllm.models.qwen3 import Qwen3ForCausalLM
 from nanovllm.layers.sampler import Sampler
 from nanovllm.utils.context import set_context, get_context, reset_context
 from nanovllm.utils.loader import load_model
+from nanovllm.kvdb.timing import ModelStageTimer
 
 
 class ModelRunner:
@@ -22,6 +23,7 @@ class ModelRunner:
         self.world_size = config.tensor_parallel_size
         self.rank = rank
         self.event = event
+        self.metrics = None
 
         dist.init_process_group("nccl", "tcp://localhost:2333", world_size=self.world_size, rank=rank)
         torch.cuda.set_device(rank)
@@ -214,7 +216,15 @@ class ModelRunner:
     def run(self, seqs: list[Sequence], is_prefill: bool) -> list[int]:
         input_ids, positions = self.prepare_prefill(seqs) if is_prefill else self.prepare_decode(seqs)
         temperatures = self.prepare_sample(seqs) if self.rank == 0 else None
-        logits = self.run_model(input_ids, positions, is_prefill)
+        timer = ModelStageTimer(self.metrics is not None and self.rank == 0, torch)
+        with timer:
+            logits = self.run_model(input_ids, positions, is_prefill)
+        if self.metrics is not None and self.rank == 0:
+            elapsed_ms = timer.elapsed_ms()
+            if is_prefill:
+                self.metrics.record_prefill(elapsed_ms)
+            else:
+                self.metrics.record_decode(elapsed_ms)
         token_ids = self.sampler(logits, temperatures).tolist() if self.rank == 0 else None
         reset_context()
         return token_ids

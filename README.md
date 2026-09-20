@@ -10,6 +10,12 @@
 
 A lightweight vLLM implementation built from scratch.
 
+## NanoKV project scope
+
+This repository is an educational extension of the public nano-vLLM project. The planned NanoKV contribution adds an explicit, observable CPU-backed reusable KV-cache tier while preserving the upstream engine as the baseline. It is not a claim to have reimplemented nano-vLLM or reproduced all of AlayaDB.
+
+Upstream attribution: [GeeeekExplorer/nano-vllm](https://github.com/GeeeekExplorer/nano-vllm), MIT licensed, imported at commit `bb823b3e06983d71485a8e1f23715ebd87d98ef8` on 2026-09-19. See [`docs/upstream.md`](docs/upstream.md) and [`docs/architecture.md`](docs/architecture.md).
+
 ## Key Features
 
 * 🚀 **Fast offline inference** - Comparable inference speeds to vLLM

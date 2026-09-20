@@ -24,6 +24,7 @@ class Sequence:
         self.num_prompt_tokens = len(token_ids)
         self.num_cached_tokens = 0
         self.num_scheduled_tokens = 0
+        self.metrics_lookup_recorded = False
         self.is_prefill = True
         self.block_table = []
         self.temperature = sampling_params.temperature

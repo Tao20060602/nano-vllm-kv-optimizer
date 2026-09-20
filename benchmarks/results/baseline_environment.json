@@ -1,0 +1,29 @@
+{
+  "recorded_at_utc": "2026-09-19T00:00:00Z",
+  "platform": "Windows (PowerShell; recorded before Python installation)",
+  "python": null,
+  "executable": null,
+  "packages": {
+    "torch": false,
+    "transformers": false,
+    "triton": false,
+    "flash_attn": false,
+    "xxhash": false
+  },
+  "torch": {
+    "installed": false,
+    "cuda_available": null,
+    "cuda_version": null,
+    "device_count": null,
+    "devices": []
+  },
+  "model_path": "C:/Users/28898/huggingface/Qwen3-0.6B",
+  "model_exists": false,
+  "git_head": null,
+  "git_status": "No commits yet on main",
+  "baseline_runs": {
+    "example.py": "not_run_missing_python_and_model",
+    "bench.py": "not_run_missing_python_and_model"
+  },
+  "note": "This is an environment record, not a performance result. Re-run benchmarks/baseline.py after installing Python/PyTorch/CUDA and the model."
+}
