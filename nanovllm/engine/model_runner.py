@@ -122,7 +122,7 @@ class ModelRunner:
         num_kv_heads = hf_config.num_key_value_heads // self.world_size
         head_dim = getattr(hf_config, "head_dim", hf_config.hidden_size // hf_config.num_attention_heads)
 
-        # ---- M11 sparse: zero physical paged blocks, per-layer CPU history ----
+        # ---- M11/M12 sparse: zero physical paged blocks, per-layer CPU history ----
         if config.enable_sparse_attention:
             config.num_kvcache_blocks = 0
             self.kv_cache = torch.empty(
@@ -131,6 +131,30 @@ class ModelRunner:
             self.gpu_block_store = None
             self.cpu_block_store = None
             self.context_db = None
+            if getattr(config, 'use_m12_runtime', False):
+                from nanovllm.sparse.m12_runtime import M12Config, M12LayerRuntime
+                m12_cfg = M12Config(
+                    block_size=config.sparse_retrieval_block_size,
+                    r=config.sparse_num_representatives,
+                    recent_tokens=config.sparse_recent_tokens,
+                    sink_tokens=config.sparse_first_tokens or 64,
+                    top_k_blocks=config.sparse_top_k,
+                    max_model_len=config.max_model_len,
+                    num_heads=hf_config.num_attention_heads,
+                    num_kv_heads=num_kv_heads,
+                    head_dim=head_dim,
+                    dtype=hf_config.dtype,
+                    scale=head_dim ** -0.5,
+                )
+                layer_id = 0
+                for module in self.model.modules():
+                    if hasattr(module, "k_cache") and hasattr(module, "v_cache"):
+                        module.layer_id = layer_id
+                        module.k_cache = self.kv_cache[0, layer_id]
+                        module.v_cache = self.kv_cache[1, layer_id]
+                        module.sparse_rt = M12LayerRuntime(layer_id, m12_cfg)
+                        layer_id += 1
+                return
             from nanovllm.sparse.engine_runtime import SparseEngineConfig, SparseLayerRuntime
             sparse_cfg = SparseEngineConfig(
                 selector=config.sparse_selector,

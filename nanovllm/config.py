@@ -39,6 +39,8 @@ class Config:
     sparse_graph_projection_topk: int = 8
     sparse_query_samples: int = 128
     enable_sparse_diagnostics: bool = False
+    # M12-MVP: use new GPU-representative runtime instead of M11 CPU selector
+    use_m12_runtime: bool = False
     # -- M12-MVP: YaRN rope scaling override -------------------------------
     # When set, this dict is injected into hf_config.rope_scaling and the
     # max_model_len cap from hf_config.max_position_embeddings is bypassed.
