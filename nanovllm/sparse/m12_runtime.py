@@ -140,6 +140,22 @@ class M12LayerRuntime:
             raw.permute(1, 0, 2, 3).to(self.reps_gpu.dtype))
 
     # ------------------------------------------------------------------
+    # One-shot CPU KV reservation (avoid lazy-growth peak at 128K)
+    # ------------------------------------------------------------------
+    def reserve_blocks(self, nblocks: int):
+        """Preallocate pageable CPU KV for nblocks blocks (no copy)."""
+        cfg = self.cfg
+        need = min(nblocks, self.max_blocks)
+        if self.k_cpu is None or self.cpu_blocks_cap < need:
+            self.k_cpu = torch.empty(
+                need, cfg.block_size, cfg.num_kv_heads, cfg.head_dim,
+                dtype=cfg.dtype, device="cpu")
+            self.v_cpu = torch.empty(
+                need, cfg.block_size, cfg.num_kv_heads, cfg.head_dim,
+                dtype=cfg.dtype, device="cpu")
+            self.cpu_blocks_cap = need
+
+    # ------------------------------------------------------------------
     # Store K/V to CPU + build reps + refresh sink/recent/protected
     # ------------------------------------------------------------------
     def _store_kv(self, k: torch.Tensor, v: torch.Tensor):
@@ -298,15 +314,24 @@ class M12LayerRuntime:
         q_f = q.float()                     # [Tq, Hq, D]
         k_f = k.float()                     # [S, Hkv, D]
         v_f = v.float()
-        qg = q_f.view(Tq, Hkv, G, D)        # [Tq, Hkv, G, D]
+
+        # Decode / no-causal fast path: batch all KV heads in one op (no mask).
+        if causal_from >= S:
+            qg = q_f.view(Tq, Hkv, G, D)                        # [Tq,Hkv,G,D]
+            scores = torch.einsum("thgd,shd->thgs", qg, k_f) * cfg.scale  # [Tq,Hkv,G,S]
+            attn = F.softmax(scores, dim=-1)
+            out = torch.einsum("thgs,shd->thgd", attn, v_f)     # [Tq,Hkv,G,D]
+            return out.reshape(Tq, Hq, D).to(q.dtype)
 
         # causal mask for the chunk region: per-query-row [Tq, S]
         # query t (chunk-relative position t) sees history + chunk keys <= t
         mask = torch.zeros(Tq, S, dtype=torch.bool, device=q.device)
         if causal_from < S:
-            for t in range(Tq):
-                mask[t, causal_from + t + 1:] = True
+            cols = torch.arange(S, device=q.device).unsqueeze(0)      # [1, S]
+            rows = (torch.arange(Tq, device=q.device) + causal_from + 1).unsqueeze(1)  # [Tq,1]
+            mask = (cols >= rows) & (cols >= causal_from)             # [Tq, S]
 
+        qg = q_f.view(Tq, Hkv, G, D)        # [Tq, Hkv, G, D]
         out = torch.empty(Tq, Hq, D, dtype=q_f.dtype, device=q.device)
         for h in range(Hkv):
             qh = qg[:, h]                   # [Tq, G, D]

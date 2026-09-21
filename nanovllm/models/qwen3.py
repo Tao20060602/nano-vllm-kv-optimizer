@@ -62,6 +62,8 @@ class Qwen3Attention(nn.Module):
             factor = float(rope_scaling.get("factor", 1.0))
             orig = int(rope_scaling.get("original_max_position_embeddings", max_position))
             max_position = max(max_position, int(orig * factor))
+            # +2048 headroom: decode positions go up to max_model_len+max_new_tokens-1
+            max_position += 2048
 
         self.rotary_emb = get_rope(
             self.head_dim,
