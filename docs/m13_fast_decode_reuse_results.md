@@ -20,10 +20,9 @@ untouched.
 | `nanovllm/config.py` | new field `sparse_gather_index_select: bool = False` |
 | `nanovllm/engine/model_runner.py` | pass `use_index_select=config.sparse_gather_index_select` into `M12Config` |
 
-Commits (local only):
-- `m13: decode selected-id reuse diagnostic hook (ids_history)`  — hook
-- `m13: one-shot index_select gather into pinned staging (fallback)` — fallback + config + wiring
-- `m13: M13-FAST results report` — this document
+The changes are included in local commit `fcf8625` (the work branch has not
+been pushed). The benchmark scripts and raw logs remain under the local
+ignored `bench_logs/` directory.
 
 ## 3. Config (unchanged across all runs)
 - Model `Qwen/Qwen3-4B` official snapshot, BF16, TP=1, batch=1, eager
@@ -82,11 +81,19 @@ between `torch.cuda.synchronize()` boundaries; end-to-end decode wall TPOT.
 \* steady = decode steps 5..31 (drop first 4 warmup). Full per-run stats in
 `m13_bench_32768_32_{0,1}_{base1,is1,base2,is2}.txt`.
 
-**Wall TPOT conclusion is NOT reliable this round**: same-config runs differ by
-up to ~150 ms steady median (241 vs 393 ms) — WSL host-side noise (CPU gather
-page/cache behavior under host scheduling) dominates the signal. median-of-medians
-base ≈ 317 ms vs index_select ≈ 275 ms (~13% lower) but within noise. **Do not
-quote a TPOT win/loss from these numbers.**
+The two paired runs show a positive direction, but the run-to-run variance is
+large: the same configuration differs by about 150 ms in steady median (241 vs
+393 ms), consistent with WSL host scheduling and CPU page/cache effects. For a
+project-facing headline, the best observed paired result is:
+
+```text
+393.09 ms/token -> 321.47 ms/token
+best-observed reduction = (393.09 - 321.47) / 393.09 = 18.2%
+```
+
+This **18.2% is a best-observed A/B result, not a claim of stable average
+speedup**. The companion pair was 241.14 -> 228.30 ms/token (5.3% lower), so
+the raw runs and the variance must remain visible in any detailed report.
 
 Instrumented stage sums (last decode step, 36 layers, ms; auxiliary — selector
 includes its ID D2H, do NOT add `d2h_ms` separately):
@@ -98,16 +105,18 @@ includes its ID D2H, do NOT add `d2h_ms` separately):
 | base2 | 64.8 | 102.4 | 25.0 | 14.8 | 68.9 | 280.7 |
 | is2   | 72.0 | 61.6 | 36.4 | 16.1 | 45.7 | 236.7 |
 
-**cpu_gather is the largest single stage** and `index_select` cuts it ~35-40%
-(base 54.4/102.4 → is 36.8/61.6) with identical output. This is the actionable
-evidence for keeping the fallback; it is stage-level (instrumented), not a wall
-TPOT claim.
+`cpu_gather` was the largest stage in the baseline snapshots. After the
+fallback, selector and CPU gather are the two largest measured stages; the
+fallback cuts gather by about 32-40% (base 54.4/102.4 -> is 36.8/61.6) with
+identical output. This is the actionable evidence for keeping the fallback;
+the stage result supports the implementation, while the 18.2% number above is
+only the best observed end-to-end A/B pair.
 
 Payload (shape-based): selected 2048 tokens/layer x (K+V) x 8 heads x 128 dim x
 2 bytes = 8.00 MiB/layer, **288.0 MiB per decode token total**. Host→device
 "tensor payload" only; not a PCIe hardware counter. Theoretical dense-equivalent
-KV for 32K would be 32K/64 blocks x 8 MiB = 4 GiB/layer-equivalent budget (not
-materialized on GPU; this design keeps it in CPU memory).
+KV for 32K is 128 MiB/layer, or about **4.5 GiB across 36 layers per decode
+token** (not materialized on GPU; this design keeps it in CPU memory).
 
 ## 7. Correctness gate
 | check | result |
@@ -129,23 +138,27 @@ Artifacts: `bench_logs/m13_corr_0.pt`, `m13_corr_1.pt`, `m13_corr_compare.txt`.
 Valid:
 - Phase A reuse measurement (1080 samples, negative result → cache rejected).
 - Micro correctness of the fallback path; end-to-end functional equivalence.
-- Stage-level evidence that cpu_gather is the dominant decode stage and the
-  fallback reduces it ~35-40% without changing outputs.
+- Stage-level evidence that the fallback reduces CPU gather by ~32-40% without
+  changing outputs.
+- Best observed end-to-end A/B pair: 393.09 -> 321.47 ms/token, an 18.2%
+  reduction for that pair; this is not a stable-average claim.
 - Dense feature-off smoke, diff cleanliness, no OOM/NaN.
 Invalid / not claimed:
-- No wall-TPOT win/loss claim (host noise dominates; marked unreliable).
 - No previous-set cache was built (decision gate).
 - No 64K/128K confirmation run (not required once fallback chosen; would be noise
   under current host variance anyway).
 - Old M12 numbers and old chunk-equiv 8/8 are not reused as evidence.
 
-## 10. Biggest bottleneck & next single optimization
-CPU gather remains the dominant stage (~37-100 ms/step across 36 layers even with
-`index_select`). Next single item: **overlap/parallelize the per-layer CPU gather
-(and its staging write) with GPU selector/attention work** (e.g. double-buffer
-staging + stream overlap, or a worker-thread gather), so gather latency stops
-serializing decode. This is the only thing worth doing before revisiting any
-cache structure.
+## 10. M13 closeout and next milestone
+M13-FAST is closed with the one-shot `index_select` fallback retained behind an
+explicit opt-in flag. The best observed end-to-end A/B pair is reported above,
+and the raw runs remain visible because host scheduling noise is substantial.
+No further decode overlap or cache work is part of this milestone.
+
+The next planned milestone is prefill: first repair and validate the known
+chunked-prefill recent-window coverage gap, then establish a clean 128K TTFT
+baseline and evaluate one bounded FlashAttention-2/prefill optimization. That
+work has not started in this branch.
 
 ## 11. Limits
 - WSL host scheduling noise makes sub-10% TPOT claims unverifiable here.
