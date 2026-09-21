@@ -39,6 +39,10 @@ class Config:
     sparse_graph_projection_topk: int = 8
     sparse_query_samples: int = 128
     enable_sparse_diagnostics: bool = False
+    # -- M12-MVP: YaRN rope scaling override -------------------------------
+    # When set, this dict is injected into hf_config.rope_scaling and the
+    # max_model_len cap from hf_config.max_position_embeddings is bypassed.
+    rope_scaling_override: dict | None = None
     cache_fingerprint: CacheFingerprint | None = field(default=None, init=False, repr=False)
 
     _SPARSE_SELECTORS = (
@@ -82,7 +86,26 @@ class Config:
             self.enable_reusable_cache = True
             self.max_num_seqs = 1
         self.hf_config = AutoConfig.from_pretrained(self.model)
-        self.max_model_len = min(self.max_model_len, self.hf_config.max_position_embeddings)
+
+        # Inject YaRN / rope_scaling override before model construction.
+        if self.rope_scaling_override is not None:
+            self.hf_config.rope_scaling = dict(self.rope_scaling_override)
+            # Ensure rope_parameters dict is also populated for Transformers >= 5.x
+            rt = self.rope_scaling_override.get("rope_type",
+                                                self.rope_scaling_override.get("type", "yarn"))
+            self.hf_config.rope_parameters = {
+                "rope_type": rt,
+                "rope_theta": self.hf_config.rope_parameters.get("rope_theta", 1000000)
+                    if hasattr(self.hf_config, "rope_parameters") else 1000000,
+                **self.rope_scaling_override,
+            }
+            # When YaRN is active, do NOT cap max_model_len to
+            # max_position_embeddings (the whole point is to extend beyond it).
+            # Only cap when no override is given.
+            self.max_model_len = self.max_model_len
+        else:
+            self.max_model_len = min(self.max_model_len, self.hf_config.max_position_embeddings)
+
         if self.enable_reusable_cache:
             self.cache_fingerprint = build_cache_fingerprint(
                 self.model,

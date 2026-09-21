@@ -51,13 +51,24 @@ class Qwen3Attention(nn.Module):
             hidden_size,
             bias=False,
         )
+
+        # Resolve rope_theta from rope_scaling if present
         if isinstance(rope_scaling, dict):
             rope_theta = rope_scaling.get("rope_theta", rope_theta)
+
+        # For YaRN, extend max_position to original * factor so the cos/sin
+        # cache covers the extended context length.
+        if isinstance(rope_scaling, dict) and rope_scaling.get("rope_type", rope_scaling.get("type")) == "yarn":
+            factor = float(rope_scaling.get("factor", 1.0))
+            orig = int(rope_scaling.get("original_max_position_embeddings", max_position))
+            max_position = max(max_position, int(orig * factor))
+
         self.rotary_emb = get_rope(
             self.head_dim,
             rotary_dim=self.head_dim,
             max_position=max_position,
             base=rope_theta,
+            rope_scaling=rope_scaling,
         )
         self.attn = Attention(
             self.num_heads,
@@ -119,10 +130,7 @@ class Qwen3MLP(nn.Module):
 
 class Qwen3DecoderLayer(nn.Module):
 
-    def __init__(
-        self,
-        config: Qwen3Config,
-    ) -> None:
+    def __init__(self, config: Qwen3Config) -> None:
         super().__init__()
         self.self_attn = Qwen3Attention(
             hidden_size=config.hidden_size,
@@ -161,10 +169,7 @@ class Qwen3DecoderLayer(nn.Module):
 
 class Qwen3Model(nn.Module):
 
-    def __init__(
-        self,
-        config: Qwen3Config,
-    ) -> None:
+    def __init__(self, config: Qwen3Config) -> None:
         super().__init__()
         self.embed_tokens = VocabParallelEmbedding(config.vocab_size, config.hidden_size)
         self.layers = nn.ModuleList([Qwen3DecoderLayer(config) for _ in range(config.num_hidden_layers)])
@@ -192,10 +197,7 @@ class Qwen3ForCausalLM(nn.Module):
         "up_proj": ("gate_up_proj", 1),
     }
 
-    def __init__(
-        self,
-        config: Qwen3Config
-    ) -> None:
+    def __init__(self, config: Qwen3Config) -> None:
         super().__init__()
         self.model = Qwen3Model(config)
         self.lm_head = ParallelLMHead(config.vocab_size, config.hidden_size)
