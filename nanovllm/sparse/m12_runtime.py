@@ -36,6 +36,7 @@ class M12Config:
     head_dim: int = 128
     dtype: torch.dtype = torch.bfloat16
     scale: float = 128.0 ** -0.5
+    use_index_select: bool = False
 
 
 class M12LayerRuntime:
@@ -94,6 +95,10 @@ class M12LayerRuntime:
         self.last_block_ids: torch.Tensor | None = None
         self.protected_blocks: set[int] = set()
         self.timings: dict[str, float] = {}
+        # M13 diagnostic: per-decode-token selected block IDs (default off)
+        self.record_ids = False
+        self.ids_history: list[list[int]] = []
+        self.use_index_select = cfg.use_index_select
 
     # ------------------------------------------------------------------
     # Representative construction on GPU (batched over blocks and heads)
@@ -413,15 +418,27 @@ class M12LayerRuntime:
         block_ids_cpu, sel_info = self._gpu_select(q[0])
         selector_ms = (perf_counter() - t_sel) * 1000.0
 
+        if self.record_ids:
+            self.ids_history.append(block_ids_cpu.tolist())
+
         K = block_ids_cpu.shape[0]
         sel_hist_tokens = K * B
 
         # 3. CPU batch gather into pinned staging (vectorized index, no per-block loop)
         t_g = perf_counter()
-        sel_k = self.k_cpu[block_ids_cpu].reshape(sel_hist_tokens, Hkv, D)
-        sel_v = self.v_cpu[block_ids_cpu].reshape(sel_hist_tokens, Hkv, D)
-        self.stage_k[:sel_hist_tokens].copy_(sel_k)
-        self.stage_v[:sel_hist_tokens].copy_(sel_v)
+        if self.use_index_select:
+            # one-shot index_select directly into pinned staging: no pageable temp
+            flat_k = self.k_cpu[:self.cpu_blocks_cap].view(-1, Hkv, D)
+            flat_v = self.v_cpu[:self.cpu_blocks_cap].view(-1, Hkv, D)
+            tok_idx = (block_ids_cpu.view(-1, 1) * B
+                       + torch.arange(B, dtype=torch.long)).reshape(-1)
+            torch.index_select(flat_k, 0, tok_idx, out=self.stage_k[:sel_hist_tokens])
+            torch.index_select(flat_v, 0, tok_idx, out=self.stage_v[:sel_hist_tokens])
+        else:
+            sel_k = self.k_cpu[block_ids_cpu].reshape(sel_hist_tokens, Hkv, D)
+            sel_v = self.v_cpu[block_ids_cpu].reshape(sel_hist_tokens, Hkv, D)
+            self.stage_k[:sel_hist_tokens].copy_(sel_k)
+            self.stage_v[:sel_hist_tokens].copy_(sel_v)
         gather_ms = (perf_counter() - t_g) * 1000.0
 
         # 4. Assemble packed GPU buffer: [selected_hist | sink | recent]

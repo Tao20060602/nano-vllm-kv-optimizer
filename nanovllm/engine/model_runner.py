@@ -145,6 +145,7 @@ class ModelRunner:
                     head_dim=head_dim,
                     dtype=hf_config.dtype,
                     scale=head_dim ** -0.5,
+                    use_index_select=config.sparse_gather_index_select,
                 )
                 layer_id = 0
                 for module in self.model.modules():
