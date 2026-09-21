@@ -69,6 +69,19 @@ class Attention(nn.Module):
         if rt is not None and rt.enabled:
             assert q.shape[0] == (context.max_seqlen_q or q.shape[0]) or context.is_prefill
             if context.is_prefill:
+                if getattr(rt, "prefill_chunk", None) is not None and hasattr(rt, "prefill_first"):
+                    # M12 chunked prefill:
+                    #  - first chunk: dense within-chunk FA2 (no history yet)
+                    #  - later chunks: fused exact attention over
+                    #    [sink | selected historical blocks | chunk(causal)]
+                    if rt.prefill_len == 0:
+                        o = flash_attn_varlen_func(q, k, v,
+                                                   max_seqlen_q=context.max_seqlen_q, cu_seqlens_q=context.cu_seqlens_q,
+                                                   max_seqlen_k=context.max_seqlen_k, cu_seqlens_k=context.cu_seqlens_k,
+                                                   softmax_scale=self.scale, causal=True, block_table=context.block_tables)
+                        rt.prefill_first(q, k, v)
+                        return o
+                    return rt.prefill_chunk(q, k, v, q.device)
                 # dense prefill output (must remain dense + fit on GPU)
                 o = flash_attn_varlen_func(q, k, v,
                                            max_seqlen_q=context.max_seqlen_q, cu_seqlens_q=context.cu_seqlens_q,

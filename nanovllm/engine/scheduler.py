@@ -14,6 +14,7 @@ class Scheduler:
         self.eos = config.eos
         self.block_size = config.kvcache_block_size
         self.sparse = getattr(config, "enable_sparse_attention", False)
+        self.sparse_prefill_chunk_size = getattr(config, 'sparse_prefill_chunk_size', 0)
         self.block_manager = BlockManager(config.num_kvcache_blocks, config.kvcache_block_size, metrics)
         self.waiting: deque[Sequence] = deque()
         self.running: deque[Sequence] = deque()
@@ -36,18 +37,25 @@ class Scheduler:
                 raise RuntimeError(
                     "sparse mode rejects batched prompts (waiting>1)")
             seq = self.waiting.popleft()
-            seq.num_scheduled_tokens = seq.num_tokens
-            seq.is_prefill = True
             seq.status = SequenceStatus.RUNNING
             self.running.append(seq)
-            return [seq], True
-        if not self.running or len(self.running) > 1:
+        elif self.running and len(self.running) == 1:
+            seq = self.running[0]
+        else:
             raise RuntimeError(
                 "sparse mode must have exactly one running sequence")
-        seq = self.running.popleft()
+
+        # prefill is done when all PROMPT tokens are cached (num_tokens grows
+        # during decode via append_token, so it cannot be the completion test)
+        if seq.num_cached_tokens < seq.num_prompt_tokens:
+            # prefill, possibly chunked (M12 long-context path)
+            remaining = seq.num_prompt_tokens - seq.num_cached_tokens
+            chunk = getattr(self, "sparse_prefill_chunk_size", 0) or remaining
+            seq.num_scheduled_tokens = min(remaining, chunk)
+            seq.is_prefill = True
+            return [seq], True
         seq.num_scheduled_tokens = 1
         seq.is_prefill = False
-        self.running.append(seq)
         return [seq], False
 
     def schedule(self) -> tuple[list[Sequence], bool]:

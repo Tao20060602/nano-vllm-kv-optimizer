@@ -6,6 +6,12 @@ built on GPU from the final post-RoPE K and stay GPU-resident.  During decode
 the selector runs entirely on GPU, only block IDs cross to CPU, selected blocks
 are batch-gathered into a reusable pinned staging, and H2D feeds a pre-allocated
 packed GPU buffer that also holds sink and recent K/V.
+
+Chunked prefill: the 128K prompt is prefilled in chunks. The first chunk uses a
+dense within-chunk FlashAttention (no history yet); every later chunk runs a
+single fused exact attention over [sink | selected historical blocks | current
+chunk (causal)] so later context genuinely attends earlier context in ONE
+softmax -- never independent per-chunk computation stitched together.
 """
 
 from __future__ import annotations
@@ -48,9 +54,7 @@ class M12LayerRuntime:
         self.max_blocks = (cfg.max_model_len + B - 1) // B
         self.groups_per_kv = cfg.num_heads // cfg.num_kv_heads
 
-        # ---- CPU KV: block-major, pageable (not pinned), LAZY-allocated
-        # at prefill to the actual sequence length (avoid reserving the full
-        # 128K footprint at construction, which would OOM small host machines).
+        # ---- CPU KV: block-major, pageable (not pinned), LAZY-allocated ----
         self.k_cpu = None
         self.v_cpu = None
         self.cpu_blocks_cap = 0
@@ -92,15 +96,15 @@ class M12LayerRuntime:
         self.timings: dict[str, float] = {}
 
     # ------------------------------------------------------------------
-    # Representative construction on GPU
+    # Representative construction on GPU (batched over blocks and heads)
     # ------------------------------------------------------------------
-    def _build_reps_gpu(self, k_blocks: torch.Tensor, nblocks: int):
-        """Batched GPU construction of r real-key representatives.
+    def _build_reps_gpu(self, k_blocks: torch.Tensor, start: int, nblocks: int):
+        """Build r real-key representatives on GPU per (block, kv_head).
 
         k_blocks: [nblocks, block_size, Hkv, D] BF16, post-RoPE real K.
-        All blocks and KV heads are processed in parallel (no per-block Python
-        loop). mean-direction real key + farthest-point directional coverage;
-        normalization is used ONLY for selection, stored reps are raw real K.
+        Writes self.reps_gpu[:, start:start+nblocks, :, :].
+        mean-direction real key + farthest-point directional coverage;
+        normalization is used ONLY for selection; stored reps are raw real K.
         """
         cfg = self.cfg
         B, Hkv, D, r = cfg.block_size, cfg.num_kv_heads, cfg.head_dim, cfg.r
@@ -109,11 +113,9 @@ class M12LayerRuntime:
 
         K = k_blocks[:N].to(torch.float32)          # [N, B, H, D]
         K_dir = F.normalize(K, dim=-1)              # [N, B, H, D]
-        # Rearrange head before token for gather along the token axis.
         Kt = K.permute(0, 2, 1, 3)                  # [N, H, B, D]
         Kdt = K_dir.permute(0, 2, 1, 3)             # [N, H, B, D]
 
-        # mean direction per (block, kv head)
         mean_dir = F.normalize(K_dir.mean(dim=1), dim=-1)   # [N, H, D]
         cos0 = torch.einsum("nbhd,nhd->nbh", K_dir, mean_dir)  # [N, B, H]
         sel_idx = torch.empty(N, Hkv, r, dtype=torch.long, device=dev)
@@ -122,33 +124,28 @@ class M12LayerRuntime:
         INF = 2.0
         for step in range(1, r):
             idx = sel_idx[:, :, :step]               # [N, H, step]
-            # gather selected directions: [N, H, step, D]
             sel_dirs = torch.gather(
                 Kdt, 2, idx.unsqueeze(-1).expand(N, Hkv, step, D))
-            # cosine of every token with all selected reps
             cos_sim = torch.einsum("nbhd,nhsd->nbhs", K_dir, sel_dirs)  # [N,B,H,step]
             max_cos = cos_sim.amax(dim=-1)           # [N, B, H]
-            # exclude already-selected tokens (force them high)
             with torch.no_grad():
                 mask = torch.zeros(N, B, Hkv, device=dev)
                 mask.scatter_(1, idx.permute(0, 2, 1).reshape(N, step, Hkv), INF)
             max_cos = torch.maximum(max_cos, mask)
-            # worst covered = minimum max-cosine
             sel_idx[:, :, step] = max_cos.argmin(dim=1)   # [N, H]
 
-        # Gather RAW real K at chosen indices: [N, H, r, D]
         raw = torch.gather(
             Kt, 2, sel_idx.unsqueeze(-1).expand(N, Hkv, r, D))
-        # Store as [Hkv, N, r, D] BF16
-        self.reps_gpu[:, :N, :, :] = raw.permute(1, 0, 2, 3).to(self.reps_gpu.dtype)
+        self.reps_gpu[:, start:start + N, :, :] = (
+            raw.permute(1, 0, 2, 3).to(self.reps_gpu.dtype))
 
     # ------------------------------------------------------------------
-    # Prefill
+    # Store K/V to CPU + build reps + refresh sink/recent/protected
     # ------------------------------------------------------------------
-    def prefill(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor) -> dict:
-        """Store post-RoPE prefill K/V to CPU and build GPU reps.
+    def _store_kv(self, k: torch.Tensor, v: torch.Tensor):
+        """Append a prefill chunk's post-RoPE K/V to the CPU history.
 
-        q,k,v: [T, Hq/Hkv, D] GPU tensors (post-QK-Norm, post-YaRN-RoPE).
+        k,v: [T, Hkv, D] GPU tensors.
         """
         cfg = self.cfg
         B = cfg.block_size
@@ -162,54 +159,166 @@ class M12LayerRuntime:
         else:
             k_pad, v_pad = k, v
 
+        start_block = self.nblocks_filled
         nblocks = padded // B
         k_blocks = k_pad.view(nblocks, B, Hkv, D)
         v_blocks = v_pad.view(nblocks, B, Hkv, D)
 
-        # Lazily (re)allocate pageable CPU KV to actual block count.
-        t_alloc = perf_counter()
-        if self.k_cpu is None or self.cpu_blocks_cap < nblocks:
-            self.k_cpu = torch.empty(nblocks, B, Hkv, D, dtype=cfg.dtype, device="cpu")
-            self.v_cpu = torch.empty(nblocks, B, Hkv, D, dtype=cfg.dtype, device="cpu")
-            self.cpu_blocks_cap = nblocks
-        alloc_ms = (perf_counter() - t_alloc) * 1000.0
+        # Lazily grow pageable CPU KV (never pinned).
+        need = start_block + nblocks
+        if self.k_cpu is None or self.cpu_blocks_cap < need:
+            new_cap = max(need, 2 * (self.cpu_blocks_cap or 1))
+            new_k = torch.empty(new_cap, B, Hkv, D, dtype=cfg.dtype, device="cpu")
+            new_v = torch.empty(new_cap, B, Hkv, D, dtype=cfg.dtype, device="cpu")
+            if self.k_cpu is not None and start_block > 0:
+                new_k[:start_block].copy_(self.k_cpu[:start_block])
+                new_v[:start_block].copy_(self.v_cpu[:start_block])
+            self.k_cpu, self.v_cpu = new_k, new_v
+            self.cpu_blocks_cap = new_cap
 
-        # Store to CPU (pageable, not pinned)
-        t0 = perf_counter()
-        self.k_cpu[:nblocks].copy_(k_blocks.cpu())
-        self.v_cpu[:nblocks].copy_(v_blocks.cpu())
-        self.nblocks_filled = nblocks
-        cpu_store_ms = (perf_counter() - t0) * 1000.0 + alloc_ms
+        self.k_cpu[start_block:need].copy_(k_blocks.cpu())
+        self.v_cpu[start_block:need].copy_(v_blocks.cpu())
 
-        # Build reps on GPU
-        t1 = perf_counter()
-        self._build_reps_gpu(k_blocks, nblocks)
-        reps_ms = (perf_counter() - t1) * 1000.0
+        # Build reps for the new blocks on GPU.
+        self._build_reps_gpu(k_blocks, start_block, nblocks)
 
-        # Sink: first sink_tokens
-        sink_len = min(cfg.sink_tokens, T)
-        self.sink_k[:sink_len].copy_(k[:sink_len])
-        self.sink_v[:sink_len].copy_(v[:sink_len])
+        # Sink: earliest tokens (first chunk only).
+        if self.prefill_len == 0:
+            sink_len = min(cfg.sink_tokens, T)
+            self.sink_k[:sink_len].copy_(k[:sink_len])
+            self.sink_v[:sink_len].copy_(v[:sink_len])
 
-        # Recent: last recent_tokens
-        recent_len = min(cfg.recent_tokens, T)
-        self.recent_k[:recent_len].copy_(k[-recent_len:])
-        self.recent_v[:recent_len].copy_(v[-recent_len:])
+        # Recent: tail of everything seen so far.
+        recent_len = min(cfg.recent_tokens, self.valid_len + T)
+        if T >= recent_len:
+            self.recent_k[:recent_len].copy_(k[-recent_len:])
+            self.recent_v[:recent_len].copy_(v[-recent_len:])
+        else:
+            carry = recent_len - T
+            self.recent_k[:carry].copy_(self.recent_k[recent_len - carry:recent_len])
+            self.recent_v[:carry].copy_(self.recent_v[recent_len - carry:recent_len])
+            self.recent_k[carry:recent_len].copy_(k)
+            self.recent_v[carry:recent_len].copy_(v)
 
-        self.valid_len = T
-        self.prefill_len = T
+        self.valid_len += T
+        self.prefill_len += T
+        self.nblocks_filled = need
 
-        # Historical blocks exclude sink (block 0) and recent (last blocks)
+        # Historical blocks exclude sink (block 0) and recent (tail blocks).
         n_recent_blocks = cfg.recent_tokens // B
         sink_blocks = {0}
-        recent_blocks = set(range(max(1, nblocks - n_recent_blocks), nblocks))
+        recent_blocks = set(range(max(1, need - n_recent_blocks), need))
         self.protected_blocks = sink_blocks | recent_blocks
 
-        return {
-            "cpu_store_ms": cpu_store_ms,
-            "reps_build_ms": reps_ms,
-            "nblocks": nblocks,
-        }
+    # ------------------------------------------------------------------
+    # First prefill chunk: dense within-chunk attention (no history yet)
+    # ------------------------------------------------------------------
+    def prefill_first(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor) -> dict:
+        """Store the first chunk; dense attention is done by the caller (FA2)."""
+        assert self.prefill_len == 0, "prefill_first called after history exists"
+        self._store_kv(k, v)
+        return {"nblocks": self.nblocks_filled, "valid_len": self.valid_len}
+
+    # ------------------------------------------------------------------
+    # Later prefill chunk: fused exact attention over sink+history+chunk
+    # ------------------------------------------------------------------
+    def prefill_chunk(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor,
+                      device: torch.device) -> torch.Tensor:
+        """Fused exact attention for a later prefill chunk.
+
+        q,k,v: [T, Hq/Hkv, D] GPU, post-RoPE.
+        Attention attends [sink(64) | top-k historical blocks | current chunk
+        (causal)] in ONE softmax (never independent per-chunk stitching).
+        """
+        cfg = self.cfg
+        B = cfg.block_size
+        T, Hkv, D = k.shape
+        Hq = cfg.num_heads
+        assert self.prefill_len > 0, "prefill_chunk requires prior history"
+
+        # 1. Select historical blocks for this chunk (mean query direction).
+        q_mean = q.mean(dim=0)  # [Hq, D]
+        hist_ids, sel_info = self._gpu_select(q_mean)  # [K] CPU
+
+        # 2. CPU batch gather selected historical blocks into pinned staging.
+        Ksel = hist_ids.shape[0]
+        sel_hist_tokens = Ksel * B
+        sel_k = self.k_cpu[hist_ids].reshape(sel_hist_tokens, Hkv, D)
+        sel_v = self.v_cpu[hist_ids].reshape(sel_hist_tokens, Hkv, D)
+        self.stage_k[:sel_hist_tokens].copy_(sel_k)
+        self.stage_v[:sel_hist_tokens].copy_(sel_v)
+
+        # 3. Store current chunk into history (so later chunks see it too).
+        self._store_kv(k, v)
+
+        # 4. Fused packed exact attention: [hist | sink | chunk(causal)].
+        sink_len = cfg.sink_tokens
+        total = sel_hist_tokens + sink_len + T
+        k_pack = torch.empty(total, Hkv, D, dtype=k.dtype, device=device)
+        v_pack = torch.empty(total, Hkv, D, dtype=k.dtype, device=device)
+
+        off = 0
+        k_pack[off:off + sel_hist_tokens] = self.stage_k[:sel_hist_tokens].to(device)
+        v_pack[off:off + sel_hist_tokens] = self.stage_v[:sel_hist_tokens].to(device)
+        off += sel_hist_tokens
+        k_pack[off:off + sink_len] = self.sink_k[:sink_len]
+        v_pack[off:off + sink_len] = self.sink_v[:sink_len]
+        off += sink_len
+        k_pack[off:off + T] = k
+        v_pack[off:off + T] = v
+
+        o = self._fused_attention(
+            q, k_pack, v_pack,
+            hist_len=sel_hist_tokens, sink_len=sink_len, causal_from=off,
+        )
+        self.last_block_ids = hist_ids
+        return o
+
+    # ------------------------------------------------------------------
+    # Fused exact attention (decode or prefill-chunk), per-KV-head loop to
+    # keep peak GPU memory bounded.
+    # ------------------------------------------------------------------
+    def _fused_attention(
+        self,
+        q: torch.Tensor,          # [Tq, Hq, D] GPU
+        k: torch.Tensor,          # [S, Hkv, D] GPU
+        v: torch.Tensor,          # [S, Hkv, D] GPU
+        hist_len: int,
+        sink_len: int,
+        causal_from: int,         # start index of the causal (current-chunk) region
+    ) -> torch.Tensor:
+        cfg = self.cfg
+        Tq = q.shape[0]
+        S = k.shape[0]
+        Hq = cfg.num_heads
+        Hkv = cfg.num_kv_heads
+        D = cfg.head_dim
+        G = Hq // Hkv
+
+        q_f = q.float()                     # [Tq, Hq, D]
+        k_f = k.float()                     # [S, Hkv, D]
+        v_f = v.float()
+        qg = q_f.view(Tq, Hkv, G, D)        # [Tq, Hkv, G, D]
+
+        # causal mask for the chunk region: per-query-row [Tq, S]
+        # query t (chunk-relative position t) sees history + chunk keys <= t
+        mask = torch.zeros(Tq, S, dtype=torch.bool, device=q.device)
+        if causal_from < S:
+            for t in range(Tq):
+                mask[t, causal_from + t + 1:] = True
+
+        out = torch.empty(Tq, Hq, D, dtype=q_f.dtype, device=q.device)
+        for h in range(Hkv):
+            qh = qg[:, h]                   # [Tq, G, D]
+            kh = k_f[:, h, :]               # [S, D]
+            vh = v_f[:, h, :]               # [S, D]
+            # scores: [Tq, G, S]
+            scores = torch.einsum("tgd,sd->tgs", qh, kh) * cfg.scale
+            scores = scores.masked_fill(mask.unsqueeze(1), float("-inf"))  # [Tq,G,S]
+            attn = F.softmax(scores, dim=-1)
+            o = torch.einsum("tgs,sd->tgd", attn, vh)   # [Tq, G, D]
+            out[:, h * G:(h + 1) * G, :] = o
+        return out.to(q.dtype)
 
     # ------------------------------------------------------------------
     # GPU selector (fully vectorized)
@@ -217,7 +326,7 @@ class M12LayerRuntime:
     def _gpu_select(self, q: torch.Tensor) -> tuple[torch.Tensor, dict]:
         """GPU-vectorized GQA group-score + global temporal top-k.
 
-        q: [Hq, D] GPU, post-RoPE decode query.
+        q: [Hq, D] GPU, post-RoPE query (single token or mean direction).
         Returns (block_ids_cpu [K] int64, timing_dict).
         """
         cfg = self.cfg
@@ -226,7 +335,6 @@ class M12LayerRuntime:
 
         q_g = q.view(Hkv, self.groups_per_kv, D)  # [Hkv, G, D]
 
-        # GQA group score: max over Q heads in group, max over r reps
         scores = torch.einsum(
             "hgd,hbrd->hgbr", q_g.float(), self.reps_gpu[:, :nblocks].float()
         )  # [Hkv, G, nblocks, r]
@@ -234,7 +342,6 @@ class M12LayerRuntime:
         scores = scores.amax(dim=1)         # max over Q heads: [Hkv, nblocks]
         global_scores = scores.amax(dim=0)  # global temporal: [nblocks]
 
-        # Mask protected blocks (sink/recent)
         if self.protected_blocks:
             prot = torch.tensor(sorted(self.protected_blocks),
                                 dtype=torch.long, device=global_scores.device)
@@ -313,19 +420,12 @@ class M12LayerRuntime:
         total_attend = off
         h2d_ms = (perf_counter() - t_h) * 1000.0
 
-        # 5. Packed exact attention (real selected K/V, not reps)
+        # 5. Packed exact attention over [hist | sink | recent]
         t_a = perf_counter()
-        q_f = q[0].float()  # [Hq, D]
-        k_f = self.packed_k[:total_attend].float()  # [S, Hkv, D]
-        v_f = self.packed_v[:total_attend].float()
-
-        q_per_kv = Hq // Hkv
-        q_exp = q_f.view(Hkv, q_per_kv, D)  # [Hkv, G, D]
-        scores = torch.einsum("hgd,shd->hgs", q_exp, k_f)  # [Hkv, G, S]
-        scores = scores * cfg.scale
-        attn = F.softmax(scores, dim=-1)  # [Hkv, G, S]
-        out = torch.einsum("hgs,shd->hgd", attn, v_f)  # [Hkv, G, D]
-        out = out.reshape(Hq, D).to(q.dtype)
+        o = self._fused_attention(
+            q, self.packed_k[:total_attend], self.packed_v[:total_attend],
+            hist_len=sel_hist_tokens, sink_len=sink_len, causal_from=total_attend,
+        )
         attn_ms = (perf_counter() - t_a) * 1000.0
 
         self.valid_len += 1
@@ -342,7 +442,7 @@ class M12LayerRuntime:
             "total_attend_tokens": total_attend,
         }
 
-        if not bool(torch.isfinite(out).all()):
+        if not bool(torch.isfinite(o).all()):
             raise RuntimeError("M12 sparse decode output is non-finite")
 
-        return out.unsqueeze(0)
+        return o
