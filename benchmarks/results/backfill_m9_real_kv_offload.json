@@ -1,0 +1,663 @@
+{
+  "milestone": "M9",
+  "note": "Exact CPU scan is an oracle. Active packed/full K/V bytes are per-layer replay-buffer bytes, NOT process memory_reserved savings; the engine still preallocates its paged KV cache.",
+  "config": {
+    "model": "/opt/models/Qwen3-0.6B",
+    "prompt_length": 2048,
+    "layer": 14,
+    "num_hidden_layers": 28,
+    "retrieval_block_size": 64,
+    "recent_tokens": 128,
+    "first_tokens": 0,
+    "top_k": 8,
+    "betas": [
+      0.5,
+      1.0,
+      2.0,
+      4.0,
+      8.0,
+      16.0,
+      24.0,
+      32.0,
+      48.0,
+      64.0,
+      80.0
+    ],
+    "warmup": 3,
+    "repeats": 10,
+    "pinned": true
+  },
+  "head_layout": {
+    "num_query_heads": 16,
+    "num_kv_heads": 8,
+    "head_dim": 128,
+    "dtype": "torch.bfloat16"
+  },
+  "raw_block_score_stats": {
+    "min": -23.65041732788086,
+    "p50": 42.33281707763672,
+    "p75": 94.25447082519531,
+    "p90": 132.08779907226562,
+    "p95": 144.01272583007812,
+    "p99": 170.4376983642578,
+    "max": 209.14614868164062,
+    "mean": 59.375762939453125
+  },
+  "environment": {
+    "device": "cuda",
+    "torch": "2.7.1+cu128",
+    "cuda_available": true,
+    "gpu": "NVIDIA GeForce RTX 3080 Laptop GPU",
+    "python": "3.12.3"
+  },
+  "dense_replay_vs_flash_attention": {
+    "max_abs_error": 0.0546875,
+    "rel_l2_error": 0.01177978515625
+  },
+  "bytes": {
+    "full_kv_bytes": 8388608,
+    "cpu_store_resident_bytes": 8388608,
+    "cpu_store_pinned": true,
+    "engine_cuda_memory_reserved_after_prefill_bytes": 13356761088,
+    "engine_cuda_memory_reserved_end_bytes": 13360955392,
+    "note": "memory_reserved is the live engine's process-wide pool and is not reduced by this layer laboratory."
+  },
+  "methods": {
+    "full_gpu_attention": {
+      "timings_ms": {
+        "gpu_full_attention": {
+          "mean_ms": 0.5459965000227385,
+          "median_ms": 0.5424910000328964,
+          "min_ms": 0.4788759997609304,
+          "max_ms": 0.6246279999686521
+        }
+      },
+      "num_selected_tokens": 2048,
+      "selected_token_ratio": 1.0,
+      "attention_mass_recovery": 1.0,
+      "critical_token_recall": 1.0,
+      "max_abs_error": 0.0,
+      "rel_l2_error": 0.0,
+      "h2d_bytes": 8388608,
+      "full_kv_bytes": 8388608,
+      "packed_full_byte_ratio": 1.0,
+      "note": "baseline with full K/V GPU-resident (not offload)"
+    },
+    "top_k_8_route_a": {
+      "timings_ms": {
+        "cpu_search": {
+          "mean_ms": 3.9443698000013683,
+          "median_ms": 3.9551804998154694,
+          "min_ms": 3.7676860001738532,
+          "max_ms": 4.057911000018066
+        },
+        "cpu_gather": {
+          "mean_ms": 0.8677625000473199,
+          "median_ms": 0.861675999885847,
+          "min_ms": 0.7908160000624775,
+          "max_ms": 0.9816209999371495
+        },
+        "h2d": {
+          "mean_ms": 0.7933459999549086,
+          "median_ms": 0.7947349997721176,
+          "min_ms": 0.7276269998328644,
+          "max_ms": 0.8890640001482097
+        },
+        "gpu_packed_attention": {
+          "mean_ms": 0.8206846000121004,
+          "median_ms": 0.8031720001326903,
+          "min_ms": 0.7611149999320332,
+          "max_ms": 0.9323790000053123
+        },
+        "total_replay": {
+          "mean_ms": 6.851744000096005,
+          "median_ms": 6.864233500209593,
+          "min_ms": 6.648175999998784,
+          "max_ms": 7.083600999976625
+        }
+      },
+      "num_selected_blocks": 29,
+      "num_blocks_total": 32,
+      "num_selected_tokens": 1856,
+      "selected_token_ratio": 0.90625,
+      "attention_mass_recovery": 0.9906731247901917,
+      "max_abs_error": 0.0546875,
+      "rel_l2_error": 0.012834040448069572,
+      "packed_k_bytes": 3801088,
+      "packed_v_bytes": 3801088,
+      "h2d_bytes": 7602176,
+      "full_kv_bytes": 8388608,
+      "packed_full_byte_ratio": 0.90625,
+      "pinned": true
+    },
+    "block_dipr_beta_0.5_route_a": {
+      "timings_ms": {
+        "cpu_search": {
+          "mean_ms": 3.98804769997696,
+          "median_ms": 3.6933880001015496,
+          "min_ms": 3.550643999915337,
+          "max_ms": 5.9845340001629665
+        },
+        "cpu_gather": {
+          "mean_ms": 0.26729700007308566,
+          "median_ms": 0.26843450018532167,
+          "min_ms": 0.24159699978554272,
+          "max_ms": 0.28351199989629094
+        },
+        "h2d": {
+          "mean_ms": 0.27594199996201496,
+          "median_ms": 0.22466199993687042,
+          "min_ms": 0.2007690000027651,
+          "max_ms": 0.4388389997984632
+        },
+        "gpu_packed_attention": {
+          "mean_ms": 0.785687399957169,
+          "median_ms": 0.7161949997680495,
+          "min_ms": 0.6421850002880092,
+          "max_ms": 1.4396579999811365
+        },
+        "total_replay": {
+          "mean_ms": 5.816931100025613,
+          "median_ms": 5.439539000008153,
+          "min_ms": 5.149127000095177,
+          "max_ms": 8.655818000079307
+        }
+      },
+      "num_selected_blocks": 2,
+      "num_blocks_total": 32,
+      "num_selected_tokens": 192,
+      "selected_token_ratio": 0.09375,
+      "attention_mass_recovery": 0.7898971438407898,
+      "max_abs_error": 2.033203125,
+      "rel_l2_error": 0.3640129566192627,
+      "packed_k_bytes": 393216,
+      "packed_v_bytes": 393216,
+      "h2d_bytes": 786432,
+      "full_kv_bytes": 8388608,
+      "packed_full_byte_ratio": 0.09375,
+      "pinned": true,
+      "critical_token_recall": 1.0
+    },
+    "block_dipr_beta_1_route_a": {
+      "timings_ms": {
+        "cpu_search": {
+          "mean_ms": 3.8557238000521465,
+          "median_ms": 3.7592310000036377,
+          "min_ms": 3.5767600002145628,
+          "max_ms": 4.266381999968871
+        },
+        "cpu_gather": {
+          "mean_ms": 0.3081157000906387,
+          "median_ms": 0.2978900001835427,
+          "min_ms": 0.2561840001362725,
+          "max_ms": 0.38352199999280856
+        },
+        "h2d": {
+          "mean_ms": 0.21702659996662987,
+          "median_ms": 0.21067650004624738,
+          "min_ms": 0.17059699985111365,
+          "max_ms": 0.27038400003220886
+        },
+        "gpu_packed_attention": {
+          "mean_ms": 0.7033619999674556,
+          "median_ms": 0.716212000043015,
+          "min_ms": 0.6038199999238714,
+          "max_ms": 0.7436490000145568
+        },
+        "total_replay": {
+          "mean_ms": 5.571092100080932,
+          "median_ms": 5.468945500069822,
+          "min_ms": 5.1017149999097455,
+          "max_ms": 6.200652000188711
+        }
+      },
+      "num_selected_blocks": 2,
+      "num_blocks_total": 32,
+      "num_selected_tokens": 192,
+      "selected_token_ratio": 0.09375,
+      "attention_mass_recovery": 0.7898971438407898,
+      "max_abs_error": 2.033203125,
+      "rel_l2_error": 0.3640129566192627,
+      "packed_k_bytes": 393216,
+      "packed_v_bytes": 393216,
+      "h2d_bytes": 786432,
+      "full_kv_bytes": 8388608,
+      "packed_full_byte_ratio": 0.09375,
+      "pinned": true,
+      "critical_token_recall": 1.0
+    },
+    "block_dipr_beta_2_route_a": {
+      "timings_ms": {
+        "cpu_search": {
+          "mean_ms": 4.051067800082819,
+          "median_ms": 4.077295000115555,
+          "min_ms": 3.781264000281226,
+          "max_ms": 4.273076000117726
+        },
+        "cpu_gather": {
+          "mean_ms": 0.3177569999934349,
+          "median_ms": 0.3150699999423523,
+          "min_ms": 0.2837500001078297,
+          "max_ms": 0.35902699983125785
+        },
+        "h2d": {
+          "mean_ms": 0.2728512000430783,
+          "median_ms": 0.26544800016381487,
+          "min_ms": 0.20680000034190016,
+          "max_ms": 0.44067299995731446
+        },
+        "gpu_packed_attention": {
+          "mean_ms": 0.7788212000377825,
+          "median_ms": 0.7874824998452823,
+          "min_ms": 0.6979650001994742,
+          "max_ms": 0.9641289998398861
+        },
+        "total_replay": {
+          "mean_ms": 5.911088499988182,
+          "median_ms": 5.975959500119643,
+          "min_ms": 5.548579999867798,
+          "max_ms": 6.437949999963166
+        }
+      },
+      "num_selected_blocks": 2,
+      "num_blocks_total": 32,
+      "num_selected_tokens": 192,
+      "selected_token_ratio": 0.09375,
+      "attention_mass_recovery": 0.7898971438407898,
+      "max_abs_error": 2.033203125,
+      "rel_l2_error": 0.3640129566192627,
+      "packed_k_bytes": 393216,
+      "packed_v_bytes": 393216,
+      "h2d_bytes": 786432,
+      "full_kv_bytes": 8388608,
+      "packed_full_byte_ratio": 0.09375,
+      "pinned": true,
+      "critical_token_recall": 1.0
+    },
+    "block_dipr_beta_4_route_a": {
+      "timings_ms": {
+        "cpu_search": {
+          "mean_ms": 4.172230699987267,
+          "median_ms": 3.9209159999700205,
+          "min_ms": 3.6109560001023056,
+          "max_ms": 5.838859000050434
+        },
+        "cpu_gather": {
+          "mean_ms": 0.3688427999350097,
+          "median_ms": 0.30116149991954444,
+          "min_ms": 0.24115500036714366,
+          "max_ms": 0.797980999777792
+        },
+        "h2d": {
+          "mean_ms": 0.23102770005607454,
+          "median_ms": 0.22421349990509043,
+          "min_ms": 0.16032800022003357,
+          "max_ms": 0.30874100002620253
+        },
+        "gpu_packed_attention": {
+          "mean_ms": 0.7892191998962517,
+          "median_ms": 0.7395214997814037,
+          "min_ms": 0.6378650000442576,
+          "max_ms": 1.2443890000213287
+        },
+        "total_replay": {
+          "mean_ms": 6.055207500048709,
+          "median_ms": 5.8893670000088605,
+          "min_ms": 5.159113999980036,
+          "max_ms": 8.112480000363576
+        }
+      },
+      "num_selected_blocks": 2,
+      "num_blocks_total": 32,
+      "num_selected_tokens": 192,
+      "selected_token_ratio": 0.09375,
+      "attention_mass_recovery": 0.7898971438407898,
+      "max_abs_error": 2.033203125,
+      "rel_l2_error": 0.3640129566192627,
+      "packed_k_bytes": 393216,
+      "packed_v_bytes": 393216,
+      "h2d_bytes": 786432,
+      "full_kv_bytes": 8388608,
+      "packed_full_byte_ratio": 0.09375,
+      "pinned": true,
+      "critical_token_recall": 1.0
+    },
+    "block_dipr_beta_8_route_a": {
+      "timings_ms": {
+        "cpu_search": {
+          "mean_ms": 4.098502700026074,
+          "median_ms": 4.159900999866295,
+          "min_ms": 3.74412500013932,
+          "max_ms": 4.498390000208019
+        },
+        "cpu_gather": {
+          "mean_ms": 0.340278399971794,
+          "median_ms": 0.31725400003779214,
+          "min_ms": 0.287023000055342,
+          "max_ms": 0.4688580002039089
+        },
+        "h2d": {
+          "mean_ms": 0.2620131998355646,
+          "median_ms": 0.22803249999014952,
+          "min_ms": 0.1917059998959303,
+          "max_ms": 0.4934829999001522
+        },
+        "gpu_packed_attention": {
+          "mean_ms": 0.7898120999925595,
+          "median_ms": 0.7820654998340615,
+          "min_ms": 0.6771370003662014,
+          "max_ms": 0.987286000054155
+        },
+        "total_replay": {
+          "mean_ms": 6.030599300038375,
+          "median_ms": 6.060413499881179,
+          "min_ms": 5.5098749999160646,
+          "max_ms": 6.703271000333189
+        }
+      },
+      "num_selected_blocks": 2,
+      "num_blocks_total": 32,
+      "num_selected_tokens": 192,
+      "selected_token_ratio": 0.09375,
+      "attention_mass_recovery": 0.7898971438407898,
+      "max_abs_error": 2.033203125,
+      "rel_l2_error": 0.3640129566192627,
+      "packed_k_bytes": 393216,
+      "packed_v_bytes": 393216,
+      "h2d_bytes": 786432,
+      "full_kv_bytes": 8388608,
+      "packed_full_byte_ratio": 0.09375,
+      "pinned": true,
+      "critical_token_recall": 1.0
+    },
+    "block_dipr_beta_16_route_a": {
+      "timings_ms": {
+        "cpu_search": {
+          "mean_ms": 3.8225387000238698,
+          "median_ms": 3.7717734999205277,
+          "min_ms": 3.6191980002513446,
+          "max_ms": 4.128552000111085
+        },
+        "cpu_gather": {
+          "mean_ms": 0.2698811999835016,
+          "median_ms": 0.266048499952376,
+          "min_ms": 0.2576920001047256,
+          "max_ms": 0.29901099969720235
+        },
+        "h2d": {
+          "mean_ms": 0.23203789996841806,
+          "median_ms": 0.20329949984443374,
+          "min_ms": 0.17192899986184784,
+          "max_ms": 0.394233999941207
+        },
+        "gpu_packed_attention": {
+          "mean_ms": 0.6732783000188647,
+          "median_ms": 0.6553829998665606,
+          "min_ms": 0.6059070001356304,
+          "max_ms": 0.7519920000049751
+        },
+        "total_replay": {
+          "mean_ms": 5.468647099996815,
+          "median_ms": 5.410192999988794,
+          "min_ms": 5.16853799990713,
+          "max_ms": 5.777659000159474
+        }
+      },
+      "num_selected_blocks": 2,
+      "num_blocks_total": 32,
+      "num_selected_tokens": 192,
+      "selected_token_ratio": 0.09375,
+      "attention_mass_recovery": 0.7898971438407898,
+      "max_abs_error": 2.033203125,
+      "rel_l2_error": 0.3640129566192627,
+      "packed_k_bytes": 393216,
+      "packed_v_bytes": 393216,
+      "h2d_bytes": 786432,
+      "full_kv_bytes": 8388608,
+      "packed_full_byte_ratio": 0.09375,
+      "pinned": true,
+      "critical_token_recall": 1.0
+    },
+    "block_dipr_beta_24_route_a": {
+      "timings_ms": {
+        "cpu_search": {
+          "mean_ms": 4.3372782999540505,
+          "median_ms": 4.452419500012184,
+          "min_ms": 3.5395830000197748,
+          "max_ms": 5.173755999749119
+        },
+        "cpu_gather": {
+          "mean_ms": 0.3814359999523731,
+          "median_ms": 0.3946140000152809,
+          "min_ms": 0.26141100033783005,
+          "max_ms": 0.49017900028047734
+        },
+        "h2d": {
+          "mean_ms": 0.3161911000006512,
+          "median_ms": 0.3126344997781416,
+          "min_ms": 0.24887400013540173,
+          "max_ms": 0.43740699993577437
+        },
+        "gpu_packed_attention": {
+          "mean_ms": 1.0240392000014253,
+          "median_ms": 0.9354359999633743,
+          "min_ms": 0.5553770001824887,
+          "max_ms": 1.513341999725526
+        },
+        "total_replay": {
+          "mean_ms": 6.619786600049338,
+          "median_ms": 6.676340000012715,
+          "min_ms": 5.04747100012537,
+          "max_ms": 8.04838900012328
+        }
+      },
+      "num_selected_blocks": 3,
+      "num_blocks_total": 32,
+      "num_selected_tokens": 256,
+      "selected_token_ratio": 0.125,
+      "attention_mass_recovery": 0.8054580092430115,
+      "max_abs_error": 1.6845703125,
+      "rel_l2_error": 0.3120867609977722,
+      "packed_k_bytes": 524288,
+      "packed_v_bytes": 524288,
+      "h2d_bytes": 1048576,
+      "full_kv_bytes": 8388608,
+      "packed_full_byte_ratio": 0.125,
+      "pinned": true,
+      "critical_token_recall": 1.0
+    },
+    "block_dipr_beta_32_route_a": {
+      "timings_ms": {
+        "cpu_search": {
+          "mean_ms": 4.081964399983917,
+          "median_ms": 4.1032270000869175,
+          "min_ms": 3.8814149997961067,
+          "max_ms": 4.224413999963872
+        },
+        "cpu_gather": {
+          "mean_ms": 0.40599720000500383,
+          "median_ms": 0.4048920002333034,
+          "min_ms": 0.3585039999052242,
+          "max_ms": 0.46288299972729874
+        },
+        "h2d": {
+          "mean_ms": 0.30682500000693835,
+          "median_ms": 0.29403699977592623,
+          "min_ms": 0.27775399985330296,
+          "max_ms": 0.38534900022568763
+        },
+        "gpu_packed_attention": {
+          "mean_ms": 0.7582875000935019,
+          "median_ms": 0.7514769997669646,
+          "min_ms": 0.6580600002052961,
+          "max_ms": 0.8575970000492816
+        },
+        "total_replay": {
+          "mean_ms": 6.073509600037141,
+          "median_ms": 6.10805649989743,
+          "min_ms": 5.773964000127307,
+          "max_ms": 6.264139999984764
+        }
+      },
+      "num_selected_blocks": 5,
+      "num_blocks_total": 32,
+      "num_selected_tokens": 384,
+      "selected_token_ratio": 0.1875,
+      "attention_mass_recovery": 0.8240107893943787,
+      "max_abs_error": 1.490234375,
+      "rel_l2_error": 0.2750791609287262,
+      "packed_k_bytes": 786432,
+      "packed_v_bytes": 786432,
+      "h2d_bytes": 1572864,
+      "full_kv_bytes": 8388608,
+      "packed_full_byte_ratio": 0.1875,
+      "pinned": true,
+      "critical_token_recall": 1.0
+    },
+    "block_dipr_beta_48_route_a": {
+      "timings_ms": {
+        "cpu_search": {
+          "mean_ms": 3.978748500048823,
+          "median_ms": 3.9731865001613187,
+          "min_ms": 3.7274969999998575,
+          "max_ms": 4.240633999870624
+        },
+        "cpu_gather": {
+          "mean_ms": 0.7295135000276787,
+          "median_ms": 0.7192470000063622,
+          "min_ms": 0.6452299999182287,
+          "max_ms": 0.850544000059017
+        },
+        "h2d": {
+          "mean_ms": 0.7231115999275062,
+          "median_ms": 0.7094369998412731,
+          "min_ms": 0.6479130001935118,
+          "max_ms": 0.8455299998786359
+        },
+        "gpu_packed_attention": {
+          "mean_ms": 0.8941404999404767,
+          "median_ms": 0.7906919997822115,
+          "min_ms": 0.7137010002224997,
+          "max_ms": 1.4506180000353197
+        },
+        "total_replay": {
+          "mean_ms": 6.847870999945371,
+          "median_ms": 6.790050499830613,
+          "min_ms": 6.221812999683607,
+          "max_ms": 7.623161000083201
+        }
+      },
+      "num_selected_blocks": 24,
+      "num_blocks_total": 32,
+      "num_selected_tokens": 1536,
+      "selected_token_ratio": 0.75,
+      "attention_mass_recovery": 0.9771223664283752,
+      "max_abs_error": 0.0703125,
+      "rel_l2_error": 0.02333369106054306,
+      "packed_k_bytes": 3145728,
+      "packed_v_bytes": 3145728,
+      "h2d_bytes": 6291456,
+      "full_kv_bytes": 8388608,
+      "packed_full_byte_ratio": 0.75,
+      "pinned": true,
+      "critical_token_recall": 1.0
+    },
+    "block_dipr_beta_64_route_a": {
+      "timings_ms": {
+        "cpu_search": {
+          "mean_ms": 4.225551999979871,
+          "median_ms": 4.016896499933864,
+          "min_ms": 3.6540539999805333,
+          "max_ms": 5.84745500009376
+        },
+        "cpu_gather": {
+          "mean_ms": 0.8969094999883964,
+          "median_ms": 0.8574770001814613,
+          "min_ms": 0.8183009999811475,
+          "max_ms": 1.0466439998708665
+        },
+        "h2d": {
+          "mean_ms": 0.8574289999614848,
+          "median_ms": 0.8574855000915704,
+          "min_ms": 0.7927830001790426,
+          "max_ms": 0.9362519999740471
+        },
+        "gpu_packed_attention": {
+          "mean_ms": 0.7561885001450719,
+          "median_ms": 0.7430925002154254,
+          "min_ms": 0.6320900001810514,
+          "max_ms": 0.9650930001043889
+        },
+        "total_replay": {
+          "mean_ms": 7.250258600015513,
+          "median_ms": 6.9837940000070375,
+          "min_ms": 6.451416999880166,
+          "max_ms": 9.252753000055236
+        }
+      },
+      "num_selected_blocks": 31,
+      "num_blocks_total": 32,
+      "num_selected_tokens": 1984,
+      "selected_token_ratio": 0.96875,
+      "attention_mass_recovery": 0.9985984563827515,
+      "max_abs_error": 0.015625,
+      "rel_l2_error": 0.002821779577061534,
+      "packed_k_bytes": 4063232,
+      "packed_v_bytes": 4063232,
+      "h2d_bytes": 8126464,
+      "full_kv_bytes": 8388608,
+      "packed_full_byte_ratio": 0.96875,
+      "pinned": true,
+      "critical_token_recall": 1.0
+    },
+    "block_dipr_beta_80_route_a": {
+      "timings_ms": {
+        "cpu_search": {
+          "mean_ms": 3.7925998999071453,
+          "median_ms": 3.7505669997699442,
+          "min_ms": 3.6163089998808573,
+          "max_ms": 4.1488869997010625
+        },
+        "cpu_gather": {
+          "mean_ms": 0.8660727000460611,
+          "median_ms": 0.8514840001225821,
+          "min_ms": 0.7963769999150827,
+          "max_ms": 0.974375999703625
+        },
+        "h2d": {
+          "mean_ms": 0.8866324000337045,
+          "median_ms": 0.8709215001090342,
+          "min_ms": 0.8172410002771358,
+          "max_ms": 1.0237609999421693
+        },
+        "gpu_packed_attention": {
+          "mean_ms": 0.7511325999530527,
+          "median_ms": 0.736603999939689,
+          "min_ms": 0.640408999970532,
+          "max_ms": 0.8972400000857306
+        },
+        "total_replay": {
+          "mean_ms": 6.800343699933364,
+          "median_ms": 6.738429499819176,
+          "min_ms": 6.455391000145028,
+          "max_ms": 7.2295609998036525
+        }
+      },
+      "num_selected_blocks": 32,
+      "num_blocks_total": 32,
+      "num_selected_tokens": 2048,
+      "selected_token_ratio": 1.0,
+      "attention_mass_recovery": 1.0,
+      "max_abs_error": 0.0,
+      "rel_l2_error": 0.0,
+      "packed_k_bytes": 4194304,
+      "packed_v_bytes": 4194304,
+      "h2d_bytes": 8388608,
+      "full_kv_bytes": 8388608,
+      "packed_full_byte_ratio": 1.0,
+      "pinned": true,
+      "critical_token_recall": 1.0
+    }
+  },
+  "timestamp": "2026-09-22T17:43:23.687632+00:00"
+}

@@ -1,0 +1,15 @@
+{
+  "status": "failed_before_model_forward",
+  "config": {
+    "mode": "dense",
+    "model": "Qwen3-4B",
+    "seq_len": 32768,
+    "gen_tokens": 16,
+    "max_num_batched_tokens": 32768,
+    "yarn_factor": 4.0
+  },
+  "failure_stage": "dense scheduler GPU block allocation",
+  "exception": "AssertionError: scheduled_seqs",
+  "interpretation": "The dense paged-KV block manager could not allocate the 32K sequence. This was not a CUDA OOM exception and no latency result was produced.",
+  "git_head": "288e2b3382533be8178d64870a582dc56408e5e2"
+}

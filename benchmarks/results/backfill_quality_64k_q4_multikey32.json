@@ -1,0 +1,57 @@
+{
+  "config": {
+    "model": "/opt/models/.cache/huggingface/hub/models--Qwen--Qwen3-4B/snapshots/1cfa9a7208912126459214e8b04321603b3df60c",
+    "seq_len": 65536,
+    "query_segments": 4,
+    "chunk_size": 4096,
+    "top_k_blocks": 32,
+    "representatives": 4
+  },
+  "cases": [
+    {
+      "name": "multikey-50",
+      "needle_token_position": 32768,
+      "needle_present": true,
+      "question_present": true,
+      "expected": "ZULU42",
+      "hit": true,
+      "generated_token_ids": [
+        220,
+        576,
+        15725,
+        2038,
+        374,
+        1863,
+        1094,
+        52,
+        19,
+        17,
+        13,
+        220,
+        576,
+        3974,
+        13876,
+        38835,
+        34208,
+        916,
+        279,
+        15678,
+        5562,
+        3143,
+        279,
+        19300,
+        14796,
+        6073,
+        13,
+        220,
+        576,
+        3974,
+        13876,
+        38835
+      ],
+      "generated_text": "  The backup code is ZULU42.  The quick brown fox jumps over the lazy dog near the calm river bank.  The quick brown fox",
+      "wall_s": 30.17499380700019
+    }
+  ],
+  "hits": 1
+}

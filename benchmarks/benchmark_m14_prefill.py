@@ -16,6 +16,7 @@ import subprocess
 import time
 from pathlib import Path
 
+import psutil
 import torch
 from transformers import AutoTokenizer
 
@@ -79,15 +80,26 @@ def main() -> None:
         rope_scaling_override=YARN,
     )
     try:
-        torch.cuda.synchronize()
-        t0 = time.perf_counter()
-        output = llm.generate(
-            [prompt_ids],
-            [SamplingParams(max_tokens=1, temperature=0.0, ignore_eos=True)],
-            use_tqdm=False,
+        process = psutil.Process()
+        rss_before = process.memory_info().rss
+        torch.cuda.reset_peak_memory_stats()
+        llm.add_request(
+            prompt_ids,
+            SamplingParams(max_tokens=1, temperature=0.0, ignore_eos=True),
         )
-        torch.cuda.synchronize()
-        wall_ms = (time.perf_counter() - t0) * 1000.0
+        prefill_step_ms = []
+        decode_step_ms = []
+        output = []
+        while not llm.is_finished():
+            torch.cuda.synchronize()
+            t0 = time.perf_counter()
+            output, num_scheduled_tokens = llm.step()
+            torch.cuda.synchronize()
+            elapsed_ms = (time.perf_counter() - t0) * 1000.0
+            if num_scheduled_tokens > 0:
+                prefill_step_ms.append(elapsed_ms)
+            else:
+                decode_step_ms.append(elapsed_ms)
 
         layers = [
             module.sparse_rt
@@ -103,8 +115,13 @@ def main() -> None:
         assert all(torch.isfinite(layer.reps_gpu[:, :layer.nblocks_filled]).all()
                    for layer in layers)
         result = {
-            "measurement": "synchronized end-to-end generate wall time; includes one decode probe",
-            "prefill_wall_ms_plus_one_decode": wall_ms,
+            "measurement": (
+                "CUDA-synchronized engine steps; max_tokens=1 samples the first "
+                "token in the final prefill step and has no standalone decode step"
+            ),
+            "prefill_wall_ms": sum(prefill_step_ms),
+            "prefill_step_ms": prefill_step_ms,
+            "decode_step_ms": decode_step_ms,
             "config": {
                 "model": model,
                 "seq_len": args.seq_len,
@@ -117,11 +134,17 @@ def main() -> None:
                 "sink_tokens": 64,
                 "recent_tokens": 512,
             },
-            "generated_tokens": len(output[0]["token_ids"]),
+            "generated_tokens": len(output[0][1]) if output else 0,
             "runtime": {
                 "layers": len(layers),
                 "layer0_valid_len": layers[0].valid_len,
                 "layer0_last_prefill_query_summaries": layers[0].last_prefill_query_summaries,
+                "host_rss_before_gib": rss_before / 1024**3,
+                "host_rss_after_gib": process.memory_info().rss / 1024**3,
+                "host_available_after_gib": psutil.virtual_memory().available / 1024**3,
+                "gpu_allocated_gib": torch.cuda.memory_allocated() / 1024**3,
+                "gpu_reserved_gib": torch.cuda.memory_reserved() / 1024**3,
+                "gpu_peak_allocated_gib": torch.cuda.max_memory_allocated() / 1024**3,
             },
             "git_head": subprocess.check_output(
                 ["git", "rev-parse", "HEAD"], text=True

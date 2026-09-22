@@ -1,0 +1,41 @@
+{
+  "config": {
+    "model": "/opt/models/.cache/huggingface/hub/models--Qwen--Qwen3-4B/snapshots/1cfa9a7208912126459214e8b04321603b3df60c",
+    "seq_len": 65536,
+    "query_segments": 4,
+    "chunk_size": 4096,
+    "top_k_blocks": 32,
+    "representatives": 4
+  },
+  "cases": [
+    {
+      "name": "simple-90",
+      "needle_token_position": 58982,
+      "needle_present": true,
+      "question_present": true,
+      "expected": "NANOEchoKilo",
+      "hit": false,
+      "generated_token_ids": [
+        220,
+        576,
+        3974,
+        13876,
+        38835,
+        34208,
+        916,
+        279,
+        15678,
+        5562,
+        3143,
+        279,
+        19300,
+        14796,
+        6073,
+        13
+      ],
+      "generated_text": "  The quick brown fox jumps over the lazy dog near the calm river bank.",
+      "wall_s": 28.611957656000413
+    }
+  ],
+  "hits": 0
+}

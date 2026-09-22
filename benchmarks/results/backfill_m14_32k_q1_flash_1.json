@@ -1,0 +1,40 @@
+{
+  "measurement": "CUDA-synchronized engine steps; max_tokens=1 samples the first token in the final prefill step and has no standalone decode step",
+  "prefill_wall_ms": 12736.282477000032,
+  "prefill_step_ms": [
+    2220.9747709999874,
+    1535.6657300000052,
+    1455.5674499999895,
+    1480.3626949999966,
+    1649.4198309999888,
+    1455.5138750000083,
+    1473.7536840000303,
+    1465.0244410000255
+  ],
+  "decode_step_ms": [],
+  "config": {
+    "model": "/opt/models/.cache/huggingface/hub/models--Qwen--Qwen3-4B/snapshots/1cfa9a7208912126459214e8b04321603b3df60c",
+    "seq_len": 32768,
+    "chunk_size": 4096,
+    "query_segments": 1,
+    "prefill_attention_backend": "flash",
+    "block_size": 64,
+    "representatives": 4,
+    "top_k_blocks": 32,
+    "sink_tokens": 64,
+    "recent_tokens": 512
+  },
+  "generated_tokens": 1,
+  "runtime": {
+    "layers": 36,
+    "layer0_valid_len": 32768,
+    "layer0_last_prefill_query_summaries": 1,
+    "host_rss_before_gib": 1.8364791870117188,
+    "host_rss_after_gib": 7.329627990722656,
+    "host_available_after_gib": 16.914443969726562,
+    "gpu_allocated_gib": 8.208291053771973,
+    "gpu_reserved_gib": 8.712890625,
+    "gpu_peak_allocated_gib": 8.528666019439697
+  },
+  "git_head": "288e2b3382533be8178d64870a582dc56408e5e2"
+}

@@ -1,0 +1,57 @@
+{
+  "config": {
+    "model": "/opt/models/.cache/huggingface/hub/models--Qwen--Qwen3-4B/snapshots/1cfa9a7208912126459214e8b04321603b3df60c",
+    "seq_len": 65536,
+    "query_segments": 1,
+    "chunk_size": 4096,
+    "top_k_blocks": 32,
+    "representatives": 4
+  },
+  "cases": [
+    {
+      "name": "multikey-50",
+      "needle_token_position": 32768,
+      "needle_present": true,
+      "question_present": true,
+      "expected": "ZULU42",
+      "hit": true,
+      "generated_token_ids": [
+        220,
+        576,
+        6234,
+        2038,
+        374,
+        330,
+        45,
+        1093,
+        12223,
+        8095,
+        42,
+        18045,
+        1,
+        323,
+        279,
+        15725,
+        2038,
+        374,
+        330,
+        57,
+        1094,
+        52,
+        19,
+        17,
+        3263,
+        220,
+        576,
+        15725,
+        2038,
+        374,
+        330,
+        57
+      ],
+      "generated_text": "  The secret code is \"NANOGolfKilo\" and the backup code is \"ZULU42\".  The backup code is \"Z",
+      "wall_s": 30.32848791100014
+    }
+  ],
+  "hits": 1
+}

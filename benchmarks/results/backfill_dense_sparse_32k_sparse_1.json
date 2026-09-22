@@ -1,0 +1,77 @@
+{
+  "measurement": "CUDA-synchronized engine steps with prefill separated",
+  "config": {
+    "mode": "sparse",
+    "model": "/opt/models/.cache/huggingface/hub/models--Qwen--Qwen3-4B/snapshots/1cfa9a7208912126459214e8b04321603b3df60c",
+    "seq_len": 32768,
+    "gen_tokens": 16,
+    "temperature": 0.0,
+    "yarn_factor": 4.0
+  },
+  "prefill": {
+    "steps": 8,
+    "step_ms": [
+      2211.443035999764,
+      1534.975341000063,
+      1443.9007000000856,
+      1429.8387609997008,
+      1464.5672560000094,
+      1443.253949999871,
+      1446.7284590000418,
+      1445.3968550001264
+    ],
+    "wall_ms": 12420.104357999662
+  },
+  "decode": {
+    "steps": 15,
+    "step_ms": [
+      761.8932489999679,
+      139.83040599987362,
+      136.8417710000358,
+      144.98399900003278,
+      136.2922839998646,
+      143.65285299982133,
+      160.61112999977922,
+      176.4179689998855,
+      147.344159000113,
+      154.20855200000005,
+      163.98593499980052,
+      144.06741799984957,
+      150.44875700004923,
+      147.9198140000335,
+      136.25862000026245
+    ],
+    "mean_ms": 189.65046106662462,
+    "median_ms": 147.344159000113,
+    "steady_drop4_mean_ms": 151.01886281813265,
+    "steady_drop4_median_ms": 147.9198140000335
+  },
+  "generated_token_ids": [
+    19516,
+    3941,
+    2176,
+    44378,
+    12716,
+    13,
+    220,
+    362,
+    14071,
+    25869,
+    1969,
+    2506,
+    279,
+    1614,
+    9934,
+    3084
+  ],
+  "generated_text": " identical across both inference paths.  A controlled baseline must keep the model prompt length",
+  "runtime": {
+    "host_rss_before_gib": 1.8365440368652344,
+    "host_rss_after_gib": 7.278659820556641,
+    "host_available_after_gib": 16.991687774658203,
+    "gpu_allocated_gib": 8.208291053771973,
+    "gpu_reserved_gib": 8.712890625,
+    "gpu_peak_allocated_gib": 8.528666019439697
+  },
+  "git_head": "288e2b3382533be8178d64870a582dc56408e5e2"
+}

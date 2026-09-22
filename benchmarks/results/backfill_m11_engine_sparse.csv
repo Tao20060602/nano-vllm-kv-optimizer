@@ -1,0 +1,8 @@
+selector,selected_token_ratio,pre_window_recall,token_agreement,ttft_ms,decode_p50_ms,decode_p95_ms,total_ms,needle_present
+full,1.0,1.0,1.0,49468.9,258.2,364.6,53935.3,True
+exact_dipr,0.186,1.0,0.125,49059.9,391.7,476.8,55253.9,False
+top_k,0.752,1.0,0.125,48958.3,436.6,485.7,55692.9,False
+mean,0.496,1.0,0.625,49148.7,658.9,673.3,59014.9,True
+real,0.31,0.667,0.312,49343.9,437.2,459.5,55943.1,True
+knn_graph,0.31,0.667,0.312,53552.9,906.2,915.5,67157.2,True
+query_guided,0.31,0.667,0.312,60604.6,909.9,951.6,74424.3,True

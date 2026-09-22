@@ -1,0 +1,7 @@
+{
+  "command": "python -m pytest -q",
+  "result": "91 passed",
+  "wall_seconds": 674.71,
+  "git_head": "288e2b3382533be8178d64870a582dc56408e5e2",
+  "note": "Full repository suite completed; this replaces the historical interrupted-run ambiguity."
+}

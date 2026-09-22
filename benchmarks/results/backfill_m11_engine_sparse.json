@@ -1,0 +1,438 @@
+{
+  "config": {
+    "model": "/opt/models/Qwen3-0.6B",
+    "prompt_tokens": 2048,
+    "num_gen": 16,
+    "max_model_len": 2068,
+    "beta_raw": 48.0,
+    "beta_scaled_logit": 4.242640687119285,
+    "recent_tokens": 128,
+    "rbs": 64,
+    "head_dim": 128
+  },
+  "methods": {
+    "full": {
+      "token_ids": [
+        220,
+        576,
+        4226,
+        374,
+        220,
+        22,
+        19,
+        17,
+        24,
+        16,
+        13,
+        220,
+        576,
+        12941,
+        1849,
+        5610
+      ],
+      "text": "  The answer is 74291.  The solar system contains",
+      "ttft_ms": 49468.94617199996,
+      "decode_p50_ms": 258.1979720007439,
+      "decode_p95_ms": 364.5692390000477,
+      "total_ms": 53935.33772000137,
+      "token_agreement": 1.0,
+      "first_divergence_position": 16,
+      "counters": {
+        "sparse_prefill_initializations": 28,
+        "sparse_decode_layer_calls": 420,
+        "sparse_generated_steps": 15,
+        "dense_decode_fallbacks": 0
+      },
+      "selection_sample_layer14": {
+        "selected_token_ratio": 1.0,
+        "num_selected_tokens": 2063,
+        "h2d_bytes": 8450048,
+        "full_kv_bytes": 8450048,
+        "truncated": false,
+        "timings_ms": {
+          "search_ms": 0.020792999748664442,
+          "refine_ms": 0.0,
+          "gather_ms": 0.6862609998279368,
+          "h2d_ms": 1.1946369995712303,
+          "attention_ms": 0.8561539998481749
+        },
+        "work": {
+          "pre_window_recall": 1.0,
+          "oracle_blocks": 12
+        }
+      },
+      "cpu_history_bytes": 237174784,
+      "cuda_allocated_bytes": 1221687296,
+      "needle_present": true
+    },
+    "exact_dipr": {
+      "token_ids": [
+        220,
+        576,
+        12941,
+        1849,
+        5610,
+        8063,
+        32875,
+        26507,
+        287,
+        279,
+        8059,
+        13,
+        8886,
+        11017,
+        458,
+        77783
+      ],
+      "text": "  The solar system contains eight planets orbiting the Sun. Each follows an ellipt",
+      "ttft_ms": 49059.868585000004,
+      "decode_p50_ms": 391.66905199999746,
+      "decode_p95_ms": 476.80458499962697,
+      "total_ms": 55253.88091899731,
+      "token_agreement": 0.125,
+      "first_divergence_position": 2,
+      "counters": {
+        "sparse_prefill_initializations": 28,
+        "sparse_decode_layer_calls": 420,
+        "sparse_generated_steps": 15,
+        "dense_decode_fallbacks": 0
+      },
+      "selection_sample_layer14": {
+        "selected_token_ratio": 0.1861366941347552,
+        "num_selected_tokens": 384,
+        "h2d_bytes": 1572864,
+        "full_kv_bytes": 8450048,
+        "truncated": false,
+        "timings_ms": {
+          "search_ms": 3.6999180001657805,
+          "refine_ms": 0.0,
+          "gather_ms": 0.17698099964036373,
+          "h2d_ms": 1.4622179996877094,
+          "attention_ms": 1.2836149999202462
+        },
+        "work": {
+          "pre_window_recall": 1.0,
+          "oracle_blocks": 6
+        }
+      },
+      "cpu_history_bytes": 237174784,
+      "cuda_allocated_bytes": 1221687296,
+      "needle_present": false
+    },
+    "top_k": {
+      "token_ids": [
+        220,
+        576,
+        12941,
+        1849,
+        5610,
+        8063,
+        32875,
+        26507,
+        287,
+        279,
+        8059,
+        13,
+        8886,
+        11017,
+        458,
+        77783
+      ],
+      "text": "  The solar system contains eight planets orbiting the Sun. Each follows an ellipt",
+      "ttft_ms": 48958.31954799996,
+      "decode_p50_ms": 436.6053929998088,
+      "decode_p95_ms": 485.701524000433,
+      "total_ms": 55692.885098998886,
+      "token_agreement": 0.125,
+      "first_divergence_position": 2,
+      "counters": {
+        "sparse_prefill_initializations": 28,
+        "sparse_decode_layer_calls": 420,
+        "sparse_generated_steps": 15,
+        "dense_decode_fallbacks": 0
+      },
+      "selection_sample_layer14": {
+        "selected_token_ratio": 0.7518177411536597,
+        "num_selected_tokens": 1551,
+        "h2d_bytes": 6352896,
+        "full_kv_bytes": 8450048,
+        "truncated": false,
+        "timings_ms": {
+          "search_ms": 3.787551999266725,
+          "refine_ms": 0.0,
+          "gather_ms": 0.5138440001246636,
+          "h2d_ms": 2.647692999744322,
+          "attention_ms": 2.497841000149492
+        },
+        "work": {
+          "pre_window_recall": 1.0,
+          "oracle_blocks": 6
+        }
+      },
+      "cpu_history_bytes": 237174784,
+      "cuda_allocated_bytes": 1221687296,
+      "needle_present": false
+    },
+    "mean": {
+      "token_ids": [
+        220,
+        576,
+        4226,
+        374,
+        220,
+        22,
+        19,
+        17,
+        24,
+        16,
+        624,
+        16141,
+        510,
+        22,
+        19,
+        17
+      ],
+      "text": "  The answer is 74291.\nAnswer:\n742",
+      "ttft_ms": 49148.71401799974,
+      "decode_p50_ms": 658.9239919994725,
+      "decode_p95_ms": 673.284362999766,
+      "total_ms": 59014.86427299915,
+      "token_agreement": 0.625,
+      "first_divergence_position": 10,
+      "counters": {
+        "sparse_prefill_initializations": 28,
+        "sparse_decode_layer_calls": 420,
+        "sparse_generated_steps": 15,
+        "dense_decode_fallbacks": 0
+      },
+      "selection_sample_layer14": {
+        "selected_token_ratio": 0.4963645176926806,
+        "num_selected_tokens": 1024,
+        "h2d_bytes": 4194304,
+        "full_kv_bytes": 8450048,
+        "truncated": false,
+        "timings_ms": {
+          "search_ms": 0.8986880002339603,
+          "refine_ms": 12.090133000128844,
+          "gather_ms": 0.3830480000033276,
+          "h2d_ms": 3.3232490004593274,
+          "attention_ms": 3.668394999294833
+        },
+        "work": {
+          "rep_dot_products": 512,
+          "refined_block_head_pairs": 360,
+          "pre_window_recall": 1.0,
+          "oracle_blocks": 5
+        }
+      },
+      "cpu_history_bytes": 237174784,
+      "cuda_allocated_bytes": 1221687296,
+      "needle_present": true
+    },
+    "real": {
+      "token_ids": [
+        220,
+        22,
+        19,
+        17,
+        24,
+        16,
+        374,
+        279,
+        6234,
+        1494,
+        792,
+        13,
+        576,
+        12941,
+        1849,
+        5610
+      ],
+      "text": " 74291 is the secret passkey. The solar system contains",
+      "ttft_ms": 49343.85312299946,
+      "decode_p50_ms": 437.1856690004279,
+      "decode_p95_ms": 459.5167420002326,
+      "total_ms": 55943.059005996474,
+      "token_agreement": 0.3125,
+      "first_divergence_position": 1,
+      "counters": {
+        "sparse_prefill_initializations": 28,
+        "sparse_decode_layer_calls": 420,
+        "sparse_generated_steps": 15,
+        "dense_decode_fallbacks": 0
+      },
+      "selection_sample_layer14": {
+        "selected_token_ratio": 0.31022782355792533,
+        "num_selected_tokens": 640,
+        "h2d_bytes": 2621440,
+        "full_kv_bytes": 8450048,
+        "truncated": false,
+        "timings_ms": {
+          "search_ms": 1.1376380007277476,
+          "refine_ms": 2.045954000095662,
+          "gather_ms": 0.20017699989693938,
+          "h2d_ms": 2.1097340004416765,
+          "attention_ms": 2.028466999945522
+        },
+        "work": {
+          "rep_dot_products": 2048,
+          "refined_block_head_pairs": 31,
+          "pre_window_recall": 0.6666666666666666,
+          "oracle_blocks": 12
+        }
+      },
+      "cpu_history_bytes": 237174784,
+      "cuda_allocated_bytes": 1221687296,
+      "needle_present": true
+    },
+    "knn_graph": {
+      "token_ids": [
+        220,
+        22,
+        19,
+        17,
+        24,
+        16,
+        374,
+        279,
+        6234,
+        1494,
+        792,
+        13,
+        576,
+        12941,
+        1849,
+        5610
+      ],
+      "text": " 74291 is the secret passkey. The solar system contains",
+      "ttft_ms": 53552.87187199974,
+      "decode_p50_ms": 906.1848909996115,
+      "decode_p95_ms": 915.4656500004421,
+      "total_ms": 67157.1606660018,
+      "token_agreement": 0.3125,
+      "first_divergence_position": 1,
+      "counters": {
+        "sparse_prefill_initializations": 28,
+        "sparse_decode_layer_calls": 420,
+        "sparse_generated_steps": 15,
+        "dense_decode_fallbacks": 0
+      },
+      "selection_sample_layer14": {
+        "selected_token_ratio": 0.31022782355792533,
+        "num_selected_tokens": 640,
+        "h2d_bytes": 2621440,
+        "full_kv_bytes": 8450048,
+        "truncated": true,
+        "timings_ms": {
+          "search_ms": 20.07552899976872,
+          "refine_ms": 0.0,
+          "gather_ms": 0.20375399981276132,
+          "h2d_ms": 2.01960600043094,
+          "attention_ms": 2.1912949996476527
+        },
+        "work": {
+          "scored_block_head_pairs": 491,
+          "refined_block_head_pairs": 31,
+          "pre_window_recall": 0.6666666666666666,
+          "oracle_blocks": 12
+        }
+      },
+      "cpu_history_bytes": 237174784,
+      "cuda_allocated_bytes": 1221687296,
+      "needle_present": true
+    },
+    "query_guided": {
+      "token_ids": [
+        220,
+        22,
+        19,
+        17,
+        24,
+        16,
+        374,
+        279,
+        6234,
+        1494,
+        792,
+        13,
+        576,
+        12941,
+        1849,
+        5610
+      ],
+      "text": " 74291 is the secret passkey. The solar system contains",
+      "ttft_ms": 60604.553187999954,
+      "decode_p50_ms": 909.9037460000545,
+      "decode_p95_ms": 951.5516940000452,
+      "total_ms": 74424.25786700097,
+      "token_agreement": 0.3125,
+      "first_divergence_position": 1,
+      "counters": {
+        "sparse_prefill_initializations": 28,
+        "sparse_decode_layer_calls": 420,
+        "sparse_generated_steps": 15,
+        "dense_decode_fallbacks": 0
+      },
+      "selection_sample_layer14": {
+        "selected_token_ratio": 0.31022782355792533,
+        "num_selected_tokens": 640,
+        "h2d_bytes": 2621440,
+        "full_kv_bytes": 8450048,
+        "truncated": true,
+        "timings_ms": {
+          "search_ms": 19.572118999349186,
+          "refine_ms": 0.0,
+          "gather_ms": 0.2951010001197574,
+          "h2d_ms": 2.355837999857613,
+          "attention_ms": 2.2804919999543927
+        },
+        "work": {
+          "scored_block_head_pairs": 480,
+          "refined_block_head_pairs": 31,
+          "pre_window_recall": 0.6666666666666666,
+          "oracle_blocks": 12
+        }
+      },
+      "cpu_history_bytes": 237174784,
+      "cuda_allocated_bytes": 1221687296,
+      "needle_present": true
+    }
+  },
+  "dense_baseline": {
+    "token_ids": [
+      220,
+      576,
+      4226,
+      374,
+      220,
+      22,
+      19,
+      17,
+      24,
+      16,
+      13,
+      220,
+      576,
+      12941,
+      1849,
+      5610
+    ],
+    "text": "  The answer is 74291.  The solar system contains",
+    "ttft_ms": 930.7467669996186,
+    "decode_p50_ms": 26.426362000165682,
+    "decode_p95_ms": 41.06235400013247,
+    "total_ms": 3422.5561279999965
+  },
+  "memory": {
+    "dense_paged_kv_bytes": 12859736064,
+    "sparse_paged_kv_bytes": 0,
+    "cuda_allocated_after_dense_init": 14081341440,
+    "cuda_allocated_after_sparse_init": 1221687296,
+    "cuda_peak_allocated_bytes": 2472985088
+  },
+  "task": {
+    "needle": "74291",
+    "dense_found_needle": true
+  },
+  "git_head_at_benchmark_start": "288e2b3382533be8178d64870a582dc56408e5e2"
+}

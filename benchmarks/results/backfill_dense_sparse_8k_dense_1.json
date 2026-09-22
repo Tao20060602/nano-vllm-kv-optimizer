@@ -1,0 +1,70 @@
+{
+  "measurement": "CUDA-synchronized engine steps with prefill separated",
+  "config": {
+    "mode": "dense",
+    "model": "/opt/models/.cache/huggingface/hub/models--Qwen--Qwen3-4B/snapshots/1cfa9a7208912126459214e8b04321603b3df60c",
+    "seq_len": 8192,
+    "gen_tokens": 16,
+    "temperature": 0.0,
+    "yarn_factor": 4.0
+  },
+  "prefill": {
+    "steps": 1,
+    "step_ms": [
+      3134.832674000336
+    ],
+    "wall_ms": 3134.832674000336
+  },
+  "decode": {
+    "steps": 15,
+    "step_ms": [
+      658.5055519999514,
+      37.35247699978572,
+      39.67903300008402,
+      44.077026000195474,
+      37.25663299974258,
+      38.945566000165854,
+      38.11949300006745,
+      37.842257999727735,
+      37.252786999943055,
+      44.66696300005424,
+      38.31713399995351,
+      36.98375899966777,
+      36.31096700019043,
+      37.402438999833976,
+      37.01730000011594
+    ],
+    "mean_ms": 79.98195913329862,
+    "median_ms": 37.842257999727735,
+    "steady_drop4_mean_ms": 38.19229990904205,
+    "steady_drop4_median_ms": 37.402438999833976
+  },
+  "generated_token_ids": [
+    1969,
+    2506,
+    279,
+    1614,
+    9934,
+    3084,
+    323,
+    24892,
+    6546,
+    19516,
+    3941,
+    2176,
+    44378,
+    12716,
+    13,
+    220
+  ],
+  "generated_text": " must keep the model prompt length and sampling configuration identical across both inference paths. ",
+  "runtime": {
+    "host_rss_before_gib": 1.56304931640625,
+    "host_rss_after_gib": 1.6057548522949219,
+    "host_available_after_gib": 22.567363739013672,
+    "gpu_allocated_gib": 12.574723243713379,
+    "gpu_reserved_gib": 13.564453125,
+    "gpu_peak_allocated_gib": 13.215502262115479
+  },
+  "git_head": "288e2b3382533be8178d64870a582dc56408e5e2"
+}

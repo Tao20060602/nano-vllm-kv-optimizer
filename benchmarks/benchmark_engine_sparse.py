@@ -4,6 +4,7 @@ Deterministic exactly-2048-token needle prompt; dense feature-off baseline vs
 every sparse selector; JSON + CSV; offline block-size replay sweep.
 Writes via atomic temp-file replace.
 """
+import argparse
 import json
 import os
 import statistics
@@ -32,10 +33,15 @@ def make_prompt(tokenizer):
     filler = ("The solar system contains eight planets orbiting the Sun. "
               "Each follows an elliptical path at a different distance. ")
     q = "What is the secret passkey? Reply with only the number."
-    text = needle + " " + (filler * 200) + " " + q
-    ids = tokenizer.encode(text)
-    ids = ids[:2048]
+    needle_ids = tokenizer.encode(needle + " ")
+    filler_ids = tokenizer.encode(filler)
+    question_ids = tokenizer.encode(" " + q)
+    middle_len = 2048 - len(needle_ids) - len(question_ids)
+    assert middle_len > 0
+    middle = (filler_ids * ((middle_len // len(filler_ids)) + 1))[:middle_len]
+    ids = needle_ids + middle + question_ids
     assert len(ids) == 2048, f"prompt must be exactly 2048, got {len(ids)}"
+    assert ids[-len(question_ids):] == question_ids, "question must survive truncation"
     return ids
 
 
@@ -77,6 +83,12 @@ def atomic_write(path, text):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--output-json", type=Path,
+                        default=OUT / "m11_engine_sparse.json")
+    parser.add_argument("--output-csv", type=Path,
+                        default=OUT / "m11_engine_sparse.csv")
+    args = parser.parse_args()
     max_model_len = 2048 + NUM_GEN + 4
     base_kwargs = dict(model=MODEL, enforce_eager=True, tensor_parallel_size=1,
                        max_num_seqs=1, max_model_len=max_model_len)
@@ -160,12 +172,12 @@ def main():
 
     sparse_eng.exit()
 
-    atomic_write(OUT / "m11_engine_sparse.json",
+    atomic_write(args.output_json,
                  json.dumps(results, indent=2, default=str))
 
     # CSV (explicit unix line endings)
     import csv
-    with open(OUT / "m11_engine_sparse.csv", "w", newline="", encoding="utf-8") as f:
+    with open(args.output_csv, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f, lineterminator="\n")
         w.writerow(["selector", "selected_token_ratio", "pre_window_recall",
                     "token_agreement", "ttft_ms", "decode_p50_ms",

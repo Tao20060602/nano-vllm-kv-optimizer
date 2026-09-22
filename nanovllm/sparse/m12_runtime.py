@@ -138,6 +138,10 @@ class M12LayerRuntime:
         self.timings: dict[str, float] = {}
         self.last_prefill_query_summaries = 0
         self.last_prefill_block_ids: torch.Tensor | None = None
+        # Opt-in benchmark probe. Events are recorded without synchronizing;
+        # the caller reads them after the enclosing engine step is synchronized.
+        self.profile_cuda_stages = False
+        self.cuda_stage_events: dict[str, tuple[torch.cuda.Event, torch.cuda.Event]] = {}
         # M13 diagnostic: per-decode-token selected block IDs (default off)
         self.record_ids = False
         self.ids_history: list[list[int]] = []
@@ -505,19 +509,34 @@ class M12LayerRuntime:
 
         assert q.shape[0] == 1 and k.shape[0] == 1
 
+        def event_pair(name: str):
+            if not self.profile_cuda_stages:
+                return None
+            pair = (torch.cuda.Event(enable_timing=True),
+                    torch.cuda.Event(enable_timing=True))
+            self.cuda_stage_events[name] = pair
+            pair[0].record()
+            return pair
+
         # 1. Append current token to recent window (shift left; clone avoids
         #    overlapping-copy error, buffer itself is reused)
+        recent_events = event_pair("recent")
         t0 = perf_counter()
         self.recent_k[:-1].copy_(self.recent_k[1:].clone())
         self.recent_v[:-1].copy_(self.recent_v[1:].clone())
         self.recent_k[-1].copy_(k[0])
         self.recent_v[-1].copy_(v[0])
         recent_ms = (perf_counter() - t0) * 1000.0
+        if recent_events:
+            recent_events[1].record()
 
         # 2. GPU selector -> block IDs D2H
+        selector_events = event_pair("selector")
         t_sel = perf_counter()
         block_ids_cpu, sel_info = self._gpu_select(q[0])
         selector_ms = (perf_counter() - t_sel) * 1000.0
+        if selector_events:
+            selector_events[1].record()
 
         if self.record_ids:
             self.ids_history.append(block_ids_cpu.tolist())
@@ -543,6 +562,7 @@ class M12LayerRuntime:
         gather_ms = (perf_counter() - t_g) * 1000.0
 
         # 4. Assemble packed GPU buffer: [selected_hist | sink | recent]
+        h2d_events = event_pair("h2d_pack")
         t_h = perf_counter()
         off = 0
         self.packed_k[off:off + sel_hist_tokens].copy_(
@@ -562,14 +582,19 @@ class M12LayerRuntime:
         off += recent_len
         total_attend = off
         h2d_ms = (perf_counter() - t_h) * 1000.0
+        if h2d_events:
+            h2d_events[1].record()
 
         # 5. Packed exact attention over [hist | sink | recent]
+        attention_events = event_pair("packed_attention")
         t_a = perf_counter()
         o = self._fused_attention(
             q, self.packed_k[:total_attend], self.packed_v[:total_attend],
             hist_len=sel_hist_tokens, sink_len=sink_len, causal_from=total_attend,
         )
         attn_ms = (perf_counter() - t_a) * 1000.0
+        if attention_events:
+            attention_events[1].record()
 
         self.valid_len += 1
         self.last_block_ids = block_ids_cpu
