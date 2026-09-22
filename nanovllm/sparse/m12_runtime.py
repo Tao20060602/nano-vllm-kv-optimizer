@@ -9,9 +9,10 @@ packed GPU buffer that also holds sink and recent K/V.
 
 Chunked prefill: the 128K prompt is prefilled in chunks. The first chunk uses a
 dense within-chunk FlashAttention (no history yet); every later chunk runs a
-single fused exact attention over [sink | selected historical blocks | current
-chunk (causal)] so later context genuinely attends earlier context in ONE
-softmax -- never independent per-chunk computation stitched together.
+single fused exact attention over [selected historical blocks | sink | previous
+recent | current chunk (causal)] so later context genuinely attends earlier
+context in ONE softmax -- never independent per-chunk computation stitched
+together.
 """
 
 from __future__ import annotations
@@ -21,6 +22,27 @@ from time import perf_counter
 
 import torch
 import torch.nn.functional as F
+
+
+def prefill_recent_slice(
+    valid_len: int, sink_tokens: int, recent_tokens: int,
+) -> tuple[int, int, int]:
+    """Return the slice of the prefill recent buffer that is not also sink.
+
+    The prefill recent buffer is left-aligned and contains the logical suffix
+    ``[max(0, valid_len - recent_tokens), valid_len)``.  Sink tokens are added
+    separately, so the overlapping prefix must be omitted from the recent
+    contribution.  Returns ``(buffer_start, buffer_offset, length)``.
+    """
+    assert valid_len >= 0
+    assert sink_tokens >= 0
+    assert recent_tokens >= 0
+
+    sink_len = min(sink_tokens, valid_len)
+    buffer_len = min(recent_tokens, valid_len)
+    buffer_start = valid_len - buffer_len
+    include_start = max(sink_len, buffer_start)
+    return buffer_start, include_start - buffer_start, valid_len - include_start
 
 
 @dataclass
@@ -241,15 +263,17 @@ class M12LayerRuntime:
         return {"nblocks": self.nblocks_filled, "valid_len": self.valid_len}
 
     # ------------------------------------------------------------------
-    # Later prefill chunk: fused exact attention over sink+history+chunk
+    # Later prefill chunk: fused exact attention over history+sink+recent+chunk
     # ------------------------------------------------------------------
     def prefill_chunk(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor,
                       device: torch.device) -> torch.Tensor:
         """Fused exact attention for a later prefill chunk.
 
         q,k,v: [T, Hq/Hkv, D] GPU, post-RoPE.
-        Attention attends [sink(64) | top-k historical blocks | current chunk
-        (causal)] in ONE softmax (never independent per-chunk stitching).
+        Attention attends [top-k historical blocks | sink | previous recent |
+        current chunk (causal)] in ONE softmax (never independent per-chunk
+        stitching).  Selected history excludes sink/recent protected blocks, so
+        this packed layout covers each represented history token exactly once.
         """
         cfg = self.cfg
         B = cfg.block_size
@@ -269,12 +293,13 @@ class M12LayerRuntime:
         self.stage_k[:sel_hist_tokens].copy_(sel_k)
         self.stage_v[:sel_hist_tokens].copy_(sel_v)
 
-        # 3. Store current chunk into history (so later chunks see it too).
-        self._store_kv(k, v)
-
-        # 4. Fused packed exact attention: [hist | sink | chunk(causal)].
-        sink_len = cfg.sink_tokens
-        total = sel_hist_tokens + sink_len + T
+        # 3. Fused packed exact attention.  The current chunk must not update
+        # recent before this pack is assembled: selector protection excluded the
+        # *previous* recent blocks, so they have to be explicitly restored here.
+        sink_len = min(cfg.sink_tokens, self.valid_len)
+        _, recent_offset, recent_len = prefill_recent_slice(
+            self.valid_len, cfg.sink_tokens, cfg.recent_tokens)
+        total = sel_hist_tokens + sink_len + recent_len + T
         k_pack = torch.empty(total, Hkv, D, dtype=k.dtype, device=device)
         v_pack = torch.empty(total, Hkv, D, dtype=k.dtype, device=device)
 
@@ -285,13 +310,27 @@ class M12LayerRuntime:
         k_pack[off:off + sink_len] = self.sink_k[:sink_len]
         v_pack[off:off + sink_len] = self.sink_v[:sink_len]
         off += sink_len
+
+        if recent_len:
+            recent_end = recent_offset + recent_len
+            k_pack[off:off + recent_len] = self.recent_k[recent_offset:recent_end]
+            v_pack[off:off + recent_len] = self.recent_v[recent_offset:recent_end]
+            off += recent_len
+
         k_pack[off:off + T] = k
         v_pack[off:off + T] = v
 
         o = self._fused_attention(
             q, k_pack, v_pack,
-            hist_len=sel_hist_tokens, sink_len=sink_len, causal_from=off,
+            hist_len=sel_hist_tokens + sink_len + recent_len,
+            sink_len=sink_len,
+            causal_from=off,
         )
+
+        # Current K/V become history only after current-chunk attention has
+        # consumed the previous recent window.  This order avoids the old gap
+        # where protected recent blocks were neither selected nor packed.
+        self._store_kv(k, v)
         self.last_block_ids = hist_ids
         return o
 
