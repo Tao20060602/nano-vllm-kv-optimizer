@@ -1,4 +1,4 @@
-# M8-M14 Benchmark Backfill
+# M0-M14 Benchmark Backfill
 
 Date: 2026-09-23.  Authoritative environment: `NanoVLLM-Ubuntu`, RTX 3080
 Laptop 16 GiB, PyTorch 2.7.1+cu128, FlashAttention 2.8.3.post1.  Source baseline
@@ -87,6 +87,43 @@ recover either true failure (0/2) and still passed the 32-token multikey case,
 so it remains opt-in with no demonstrated quality gain.  A first 128K quality
 point (simple needle at 50%) passed in 56.58 s: **1/1 single-case evidence**, not
 a general 128K quality claim.
+
+## M0-M7 prefix reuse: current-code confirmation
+
+Qwen3-0.6B, block size 256, five warmups and twenty recorded measurements per
+point.  Every exact-reuse mode generated the same token sequence as cold at
+all six points.  The table reports median TTFT; parenthesized values are signed
+changes relative to cold at the same prompt, so negative is faster.
+
+| Reused prefix | Cold | GPU hit | CPU pageable | CPU pinned |
+| ---: | ---: | ---: | ---: | ---: |
+| 256 | 44.79 ms | 32.16 ms (-28.2%) | 35.90 ms (-19.9%) | 43.29 ms (-3.3%) |
+| 512 | 31.51 ms | 33.44 ms (+6.1%) | 41.72 ms (+32.4%) | 39.04 ms (+23.9%) |
+| 1024 | 42.22 ms | 32.25 ms (-23.6%) | 47.79 ms (+13.2%) | 56.90 ms (+34.8%) |
+| 2048 | 83.21 ms | 34.08 ms (-59.0%) | 66.33 ms (-20.3%) | 55.81 ms (-32.9%) |
+| 4096 | 181.58 ms | **32.58 ms (-82.1%)** | 97.60 ms (-46.2%) | **76.67 ms (-57.8%)** |
+
+The measured CPU-cache crossover is therefore around 2K tokens in this
+environment; results at 1K and below are not consistently positive.  The
+short-point cold medians are also non-monotonic, so these points should be
+treated as fixed-overhead/noise dominated rather than used to claim a smooth
+scaling curve.  At 4K, pinned memory saved another 20.93 ms over pageable.
+
+The cumulative cache telemetry at the end of the run reported effective H2D
+bandwidth of 10.93 GB/s for pinned versus 7.44 GB/s for pageable; D2H was 7.06
+versus 1.70 GB/s.  The configured CPU cache held up to 64 blocks, 1.75 GiB.
+These are application-level bytes/time counters, not PCIe hardware counters.
+
+For the 1024-prefix request with 32 generated tokens, end-to-end wall medians
+were cold 869.09 ms, GPU 871.22 ms, pageable 872.58 ms and pinned 901.68 ms.
+Prefix reuse improved GPU TTFT from 50.23 to 33.36 ms, but the unchanged decode
+work dominated the short request, so there is no end-to-end speedup claim.
+
+Partial pinned reuse used a fixed 2064-token prompt.  Relative to the 83.21 ms
+cold reference, median TTFT was 91.20, 72.80, 54.95 and 54.81 ms for 25%, 50%,
+75% and 100% reusable full blocks.  The 75% and 100% points being effectively
+tied shows the local tradeoff: transferring additional old KV can cost about
+as much as recomputing the remaining small suffix.
 
 ## M8-M11 historical comparisons rerun
 
