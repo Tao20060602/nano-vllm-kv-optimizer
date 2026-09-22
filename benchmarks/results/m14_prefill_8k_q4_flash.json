@@ -1,0 +1,23 @@
+{
+  "measurement": "synchronized end-to-end generate wall time; includes one decode probe",
+  "prefill_wall_ms_plus_one_decode": 6673.012450999977,
+  "config": {
+    "model": "/opt/models/.cache/huggingface/hub/models--Qwen--Qwen3-4B/snapshots/1cfa9a7208912126459214e8b04321603b3df60c",
+    "seq_len": 8192,
+    "chunk_size": 4096,
+    "query_segments": 4,
+    "prefill_attention_backend": "flash",
+    "block_size": 64,
+    "representatives": 4,
+    "top_k_blocks": 32,
+    "sink_tokens": 64,
+    "recent_tokens": 512
+  },
+  "generated_tokens": 1,
+  "runtime": {
+    "layers": 36,
+    "layer0_valid_len": 8192,
+    "layer0_last_prefill_query_summaries": 4
+  },
+  "git_head": "77219bf6d823ecb6140fd30d36a0595802fbd7c5"
+}
