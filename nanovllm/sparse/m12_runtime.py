@@ -137,6 +137,7 @@ class M12LayerRuntime:
         self.protected_blocks: set[int] = set()
         self.timings: dict[str, float] = {}
         self.last_prefill_query_summaries = 0
+        self.last_prefill_block_ids: torch.Tensor | None = None
         # M13 diagnostic: per-decode-token selected block IDs (default off)
         self.record_ids = False
         self.ids_history: list[list[int]] = []
@@ -349,6 +350,7 @@ class M12LayerRuntime:
         # consumed the previous recent window.  This order avoids the old gap
         # where protected recent blocks were neither selected nor packed.
         self._store_kv(k, v)
+        self.last_prefill_block_ids = hist_ids.clone()
         self.last_block_ids = hist_ids
         return o
 

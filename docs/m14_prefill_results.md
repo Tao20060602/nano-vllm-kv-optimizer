@@ -52,9 +52,16 @@ tested packed-attention semantics.
 
 ## Deliberate non-claims and next check
 
-This comparison does **not** establish that four query summaries improve
-long-context answer quality versus one global mean.  The next quality gate is
-to run the same needle/distractor prompt with segments=1 and segments=4, record
-the final-prefill target-block selection across layers, and then compare answer
-hits.  Do not change the r=4 representative construction before that test
-separates query-compression loss from key-representative loss.
+The routing quality gate was run on a separate 16K needle prompt, with the
+needle at block 128 and the question in the final chunk.  Both configurations
+generated `M14ORBIT42`, but the target block was selected by 30/36 layers
+(83.3%) with one global query summary and 29/36 layers (80.6%) with four.
+Therefore **four query summaries remain an opt-in experiment and the default
+stays at one**.  There is no evidence from this gate to change the r=4
+representative construction; the next quality experiment should be a harder
+needle/distractor suite, not a speculative representative rewrite.
+
+Raw routing records:
+
+- `benchmarks/results/m14_routing_16k_q1.json`
+- `benchmarks/results/m14_routing_16k_q4.json`

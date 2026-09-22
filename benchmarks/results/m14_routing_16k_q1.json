@@ -1,0 +1,11 @@
+{
+  "query_segments": 1,
+  "seq_len": 16384,
+  "target_blocks": [
+    128
+  ],
+  "layers": 36,
+  "target_block_selected_layers": 30,
+  "target_block_selected_fraction": 0.8333333333333334,
+  "generated_text": " The verification key is M14ORBIT42. The verification key is"
+}

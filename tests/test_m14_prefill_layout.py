@@ -87,6 +87,7 @@ def test_prefill_chunk_restores_previous_recent_before_storing_current() -> None
 
     torch.testing.assert_close(actual, expected, rtol=2e-5, atol=2e-5)
     assert rt.valid_len == 12
+    assert rt.last_prefill_block_ids.tolist() == [1, 2]
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="requires CUDA FlashAttention")
