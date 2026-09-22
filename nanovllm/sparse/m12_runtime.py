@@ -45,6 +45,23 @@ def prefill_recent_slice(
     return buffer_start, include_start - buffer_start, valid_len - include_start
 
 
+def prefill_query_summaries(q: torch.Tensor, nsegments: int) -> torch.Tensor:
+    """Summarize a prefill chunk into equal, locally meaningful Q segments.
+
+    ``nsegments=1`` is bit-for-bit the historical ``q.mean(dim=0)`` route,
+    represented with an explicit leading sample dimension.  For a larger value,
+    each non-empty consecutive segment contributes one mean query; the selector
+    takes a max score across those samples without changing the top-k block or
+    H2D budget.
+    """
+    assert q.ndim == 3, "q must be [T, Hq, D]"
+    assert nsegments > 0
+    nsegments = min(nsegments, q.shape[0])
+    if nsegments == 1:
+        return q.mean(dim=0, keepdim=True)
+    return torch.stack([part.mean(dim=0) for part in torch.tensor_split(q, nsegments)])
+
+
 @dataclass
 class M12Config:
     block_size: int = 64
@@ -59,6 +76,8 @@ class M12Config:
     dtype: torch.dtype = torch.bfloat16
     scale: float = 128.0 ** -0.5
     use_index_select: bool = False
+    prefill_query_segments: int = 1
+    prefill_attention_backend: str = "torch"
 
 
 class M12LayerRuntime:
@@ -117,6 +136,7 @@ class M12LayerRuntime:
         self.last_block_ids: torch.Tensor | None = None
         self.protected_blocks: set[int] = set()
         self.timings: dict[str, float] = {}
+        self.last_prefill_query_summaries = 0
         # M13 diagnostic: per-decode-token selected block IDs (default off)
         self.record_ids = False
         self.ids_history: list[list[int]] = []
@@ -281,9 +301,12 @@ class M12LayerRuntime:
         Hq = cfg.num_heads
         assert self.prefill_len > 0, "prefill_chunk requires prior history"
 
-        # 1. Select historical blocks for this chunk (mean query direction).
-        q_mean = q.mean(dim=0)  # [Hq, D]
-        hist_ids, sel_info = self._gpu_select(q_mean)  # [K] CPU
+        # 1. Select historical blocks from one or more local query summaries.
+        # Four segment means preserve intent that a 4096-token global mean
+        # would otherwise cancel, while leaving the block/H2D budget unchanged.
+        q_summary = prefill_query_summaries(q, cfg.prefill_query_segments)
+        self.last_prefill_query_summaries = q_summary.shape[0]
+        hist_ids, sel_info = self._gpu_select(q_summary)  # [K] CPU
 
         # 2. CPU batch gather selected historical blocks into pinned staging.
         Ksel = hist_ids.shape[0]
@@ -320,12 +343,7 @@ class M12LayerRuntime:
         k_pack[off:off + T] = k
         v_pack[off:off + T] = v
 
-        o = self._fused_attention(
-            q, k_pack, v_pack,
-            hist_len=sel_hist_tokens + sink_len + recent_len,
-            sink_len=sink_len,
-            causal_from=off,
-        )
+        o = self._prefill_attention(q, k_pack, v_pack, causal_from=off)
 
         # Current K/V become history only after current-chunk attention has
         # consumed the previous recent window.  This order avoids the old gap
@@ -333,6 +351,38 @@ class M12LayerRuntime:
         self._store_kv(k, v)
         self.last_block_ids = hist_ids
         return o
+
+    def _prefill_attention(
+        self,
+        q: torch.Tensor,
+        k: torch.Tensor,
+        v: torch.Tensor,
+        causal_from: int,
+    ) -> torch.Tensor:
+        """Run later-chunk packed attention with a selectable exact backend.
+
+        FlashAttention 2's bottom-right causal alignment for ``Sq < Sk`` gives
+        every query access to the full historical prefix and to current-chunk
+        keys through its own position.  That is the same mask constructed by
+        ``_fused_attention``; the latter remains the small, inspectable
+        reference backend for parity tests and diagnosis.
+        """
+        if self.cfg.prefill_attention_backend == "torch":
+            return self._fused_attention(
+                q, k, v, hist_len=causal_from, sink_len=0,
+                causal_from=causal_from,
+            )
+        if self.cfg.prefill_attention_backend != "flash":
+            raise ValueError(
+                f"unknown prefill attention backend: "
+                f"{self.cfg.prefill_attention_backend!r}")
+
+        from flash_attn import flash_attn_func
+
+        return flash_attn_func(
+            q.unsqueeze(0), k.unsqueeze(0), v.unsqueeze(0),
+            softmax_scale=self.cfg.scale, causal=True,
+        ).squeeze(0)
 
     # ------------------------------------------------------------------
     # Fused exact attention (decode or prefill-chunk), per-KV-head loop to
@@ -395,20 +445,26 @@ class M12LayerRuntime:
     def _gpu_select(self, q: torch.Tensor) -> tuple[torch.Tensor, dict]:
         """GPU-vectorized GQA group-score + global temporal top-k.
 
-        q: [Hq, D] GPU, post-RoPE query (single token or mean direction).
+        q: [Hq, D] or [Nq, Hq, D] GPU post-RoPE query summaries.  The Nq
+           dimension is used by multi-query prefill routing and is max-reduced.
         Returns (block_ids_cpu [K] int64, timing_dict).
         """
         cfg = self.cfg
         Hq, Hkv, D = cfg.num_heads, cfg.num_kv_heads, cfg.head_dim
         nblocks = self.nblocks_filled
 
-        q_g = q.view(Hkv, self.groups_per_kv, D)  # [Hkv, G, D]
+        if q.ndim == 2:
+            q = q.unsqueeze(0)
+        assert q.ndim == 3 and q.shape[1:] == (Hq, D)
+        nq = q.shape[0]
+        q_g = q.view(nq, Hkv, self.groups_per_kv, D)  # [Nq, Hkv, G, D]
 
         scores = torch.einsum(
-            "hgd,hbrd->hgbr", q_g.float(), self.reps_gpu[:, :nblocks].float()
-        )  # [Hkv, G, nblocks, r]
-        scores = scores.amax(dim=-1)        # max over r: [Hkv, G, nblocks]
-        scores = scores.amax(dim=1)         # max over Q heads: [Hkv, nblocks]
+            "nhgd,hbrd->nhgbr", q_g.float(), self.reps_gpu[:, :nblocks].float()
+        )  # [Nq, Hkv, G, nblocks, r]
+        scores = scores.amax(dim=-1)        # max over r: [Nq, Hkv, G, nblocks]
+        scores = scores.amax(dim=2)         # max over Q heads: [Nq, Hkv, nblocks]
+        scores = scores.amax(dim=0)         # max over query summaries: [Hkv, nblocks]
         global_scores = scores.amax(dim=0)  # global temporal: [nblocks]
 
         if self.protected_blocks:
@@ -427,7 +483,11 @@ class M12LayerRuntime:
         block_ids_cpu = topk_ids.cpu()
         d2h_ms = (perf_counter() - t_d2h) * 1000.0
 
-        return block_ids_cpu, {"d2h_ms": d2h_ms, "n_selected": k}
+        return block_ids_cpu, {
+            "d2h_ms": d2h_ms,
+            "n_selected": k,
+            "n_query_summaries": nq,
+        }
 
     # ------------------------------------------------------------------
     # Decode

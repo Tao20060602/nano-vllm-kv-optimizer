@@ -43,6 +43,12 @@ class Config:
     use_m12_runtime: bool = False
     # M12 chunked prefill: max tokens per prefill step (0 = one-shot whole prompt)
     sparse_prefill_chunk_size: int = 0
+    # M14: number of equal query segments used to route a later prefill chunk.
+    # 1 preserves the original whole-chunk mean-query behavior.
+    sparse_prefill_query_segments: int = 1
+    # M14: later-chunk packed attention backend.  FlashAttention-2 keeps the
+    # same selected blocks and one-softmax semantics as the torch reference.
+    sparse_prefill_attention_backend: str = "flash"
     # M13: gather selected blocks via one-shot index_select into pinned staging
     sparse_gather_index_select: bool = False
     # -- M12-MVP: YaRN rope scaling override -------------------------------
@@ -70,6 +76,8 @@ class Config:
         assert self.sparse_graph_max_scored_blocks > 0
         assert self.sparse_graph_projection_topk > 0
         assert self.sparse_query_samples > 0
+        assert self.sparse_prefill_query_segments > 0
+        assert self.sparse_prefill_attention_backend in ("torch", "flash")
         assert self.enforce_eager, "sparse mode requires enforce_eager=True"
         assert self.tensor_parallel_size == 1, "sparse mode requires TP=1"
         assert self.max_num_seqs == 1, "sparse mode requires max_num_seqs=1"

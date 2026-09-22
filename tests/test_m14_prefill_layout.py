@@ -4,6 +4,7 @@ import torch
 from nanovllm.sparse.m12_runtime import (
     M12Config,
     M12LayerRuntime,
+    prefill_query_summaries,
     prefill_recent_slice,
 )
 
@@ -43,6 +44,20 @@ def test_prefill_recent_slice_deduplicates_sink_at_short_history() -> None:
     assert prefill_recent_slice(64, 64, 512) == (0, 64, 0)
 
 
+def test_one_prefill_query_summary_is_the_legacy_global_mean() -> None:
+    q = torch.arange(8 * 2 * 3, dtype=torch.float32).view(8, 2, 3)
+    actual = prefill_query_summaries(q, 1)
+    torch.testing.assert_close(actual[0], q.mean(dim=0))
+
+
+def test_four_prefill_query_summaries_preserve_segment_means() -> None:
+    q = torch.arange(8 * 2 * 3, dtype=torch.float32).view(8, 2, 3)
+    actual = prefill_query_summaries(q, 4)
+    expected = torch.stack([q[0:2].mean(0), q[2:4].mean(0),
+                            q[4:6].mean(0), q[6:8].mean(0)])
+    torch.testing.assert_close(actual, expected)
+
+
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="requires CUDA sparse runtime")
 def test_prefill_chunk_restores_previous_recent_before_storing_current() -> None:
     """The packed later-chunk path covers all prior tokens in this toy setup."""
@@ -72,3 +87,33 @@ def test_prefill_chunk_restores_previous_recent_before_storing_current() -> None
 
     torch.testing.assert_close(actual, expected, rtol=2e-5, atol=2e-5)
     assert rt.valid_len == 12
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="requires CUDA FlashAttention")
+def test_flash_prefill_backend_matches_torch_reference() -> None:
+    """FA2 uses the intended bottom-right causal mask for packed history."""
+    torch.manual_seed(11)
+    cfg = M12Config(
+        block_size=2, r=1, recent_tokens=2, sink_tokens=2, top_k_blocks=2,
+        max_model_len=16, num_heads=2, num_kv_heads=1, head_dim=16,
+        dtype=torch.bfloat16, scale=0.25, prefill_attention_backend="flash",
+    )
+    rt = M12LayerRuntime(layer_id=0, cfg=cfg)
+    device = torch.device("cuda")
+    q0 = torch.randn(8, 2, 16, device=device, dtype=torch.bfloat16)
+    k0 = torch.randn(8, 1, 16, device=device, dtype=torch.bfloat16)
+    v0 = torch.randn(8, 1, 16, device=device, dtype=torch.bfloat16)
+    rt.prefill_first(q0, k0, v0)
+    rt._gpu_select = lambda _q: (torch.tensor([1, 2]), {"n_selected": 2})
+
+    q1 = torch.randn(4, 2, 16, device=device, dtype=torch.bfloat16)
+    k1 = torch.randn(4, 1, 16, device=device, dtype=torch.bfloat16)
+    v1 = torch.randn(4, 1, 16, device=device, dtype=torch.bfloat16)
+    actual = rt.prefill_chunk(q1, k1, v1, device)
+    expected = rt._fused_attention(
+        q1, torch.cat((k0, k1)), torch.cat((v0, v1)),
+        hist_len=k0.shape[0], sink_len=cfg.sink_tokens,
+        causal_from=k0.shape[0],
+    )
+
+    torch.testing.assert_close(actual, expected, rtol=3e-2, atol=3e-2)
