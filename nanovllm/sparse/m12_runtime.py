@@ -17,6 +17,7 @@ together.
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 from dataclasses import dataclass
 from time import perf_counter
 
@@ -76,6 +77,7 @@ class M12Config:
     dtype: torch.dtype = torch.bfloat16
     scale: float = 128.0 ** -0.5
     use_index_select: bool = False
+    check_finite_outputs: bool = False
     prefill_query_segments: int = 1
     prefill_attention_backend: str = "torch"
 
@@ -142,6 +144,8 @@ class M12LayerRuntime:
         # the caller reads them after the enclosing engine step is synchronized.
         self.profile_cuda_stages = False
         self.cuda_stage_events: dict[str, tuple[torch.cuda.Event, torch.cuda.Event]] = {}
+        # Opt-in PyTorch-profiler ranges; set by profiling benchmarks only.
+        self.profile_torch_stages = False
         # M13 diagnostic: per-decode-token selected block IDs (default off)
         self.record_ids = False
         self.ids_history: list[list[int]] = []
@@ -486,7 +490,8 @@ class M12LayerRuntime:
         _, topk_ids = global_scores.topk(k)
 
         t_d2h = perf_counter()
-        block_ids_cpu = topk_ids.cpu()
+        with self._profile_range("selector_id_d2h"):
+            block_ids_cpu = topk_ids.cpu()
         d2h_ms = (perf_counter() - t_d2h) * 1000.0
 
         return block_ids_cpu, {
@@ -494,6 +499,12 @@ class M12LayerRuntime:
             "n_selected": k,
             "n_query_summaries": nq,
         }
+
+    def _profile_range(self, name: str):
+        """Return a named profiler range when explicitly enabled."""
+        if self.profile_torch_stages:
+            return torch.profiler.record_function(f"m12.{name}")
+        return nullcontext()
 
     # ------------------------------------------------------------------
     # Decode
@@ -522,10 +533,11 @@ class M12LayerRuntime:
         #    overlapping-copy error, buffer itself is reused)
         recent_events = event_pair("recent")
         t0 = perf_counter()
-        self.recent_k[:-1].copy_(self.recent_k[1:].clone())
-        self.recent_v[:-1].copy_(self.recent_v[1:].clone())
-        self.recent_k[-1].copy_(k[0])
-        self.recent_v[-1].copy_(v[0])
+        with self._profile_range("recent_update"):
+            self.recent_k[:-1].copy_(self.recent_k[1:].clone())
+            self.recent_v[:-1].copy_(self.recent_v[1:].clone())
+            self.recent_k[-1].copy_(k[0])
+            self.recent_v[-1].copy_(v[0])
         recent_ms = (perf_counter() - t0) * 1000.0
         if recent_events:
             recent_events[1].record()
@@ -533,7 +545,8 @@ class M12LayerRuntime:
         # 2. GPU selector -> block IDs D2H
         selector_events = event_pair("selector")
         t_sel = perf_counter()
-        block_ids_cpu, sel_info = self._gpu_select(q[0])
+        with self._profile_range("selector"):
+            block_ids_cpu, sel_info = self._gpu_select(q[0])
         selector_ms = (perf_counter() - t_sel) * 1000.0
         if selector_events:
             selector_events[1].record()
@@ -546,40 +559,42 @@ class M12LayerRuntime:
 
         # 3. CPU batch gather into pinned staging (vectorized index, no per-block loop)
         t_g = perf_counter()
-        if self.use_index_select:
-            # one-shot index_select directly into pinned staging: no pageable temp
-            flat_k = self.k_cpu[:self.cpu_blocks_cap].view(-1, Hkv, D)
-            flat_v = self.v_cpu[:self.cpu_blocks_cap].view(-1, Hkv, D)
-            tok_idx = (block_ids_cpu.view(-1, 1) * B
-                       + torch.arange(B, dtype=torch.long)).reshape(-1)
-            torch.index_select(flat_k, 0, tok_idx, out=self.stage_k[:sel_hist_tokens])
-            torch.index_select(flat_v, 0, tok_idx, out=self.stage_v[:sel_hist_tokens])
-        else:
-            sel_k = self.k_cpu[block_ids_cpu].reshape(sel_hist_tokens, Hkv, D)
-            sel_v = self.v_cpu[block_ids_cpu].reshape(sel_hist_tokens, Hkv, D)
-            self.stage_k[:sel_hist_tokens].copy_(sel_k)
-            self.stage_v[:sel_hist_tokens].copy_(sel_v)
+        with self._profile_range("cpu_gather"):
+            if self.use_index_select:
+                # one-shot index_select directly into pinned staging: no pageable temp
+                flat_k = self.k_cpu[:self.cpu_blocks_cap].view(-1, Hkv, D)
+                flat_v = self.v_cpu[:self.cpu_blocks_cap].view(-1, Hkv, D)
+                tok_idx = (block_ids_cpu.view(-1, 1) * B
+                           + torch.arange(B, dtype=torch.long)).reshape(-1)
+                torch.index_select(flat_k, 0, tok_idx, out=self.stage_k[:sel_hist_tokens])
+                torch.index_select(flat_v, 0, tok_idx, out=self.stage_v[:sel_hist_tokens])
+            else:
+                sel_k = self.k_cpu[block_ids_cpu].reshape(sel_hist_tokens, Hkv, D)
+                sel_v = self.v_cpu[block_ids_cpu].reshape(sel_hist_tokens, Hkv, D)
+                self.stage_k[:sel_hist_tokens].copy_(sel_k)
+                self.stage_v[:sel_hist_tokens].copy_(sel_v)
         gather_ms = (perf_counter() - t_g) * 1000.0
 
         # 4. Assemble packed GPU buffer: [selected_hist | sink | recent]
         h2d_events = event_pair("h2d_pack")
         t_h = perf_counter()
-        off = 0
-        self.packed_k[off:off + sel_hist_tokens].copy_(
-            self.stage_k[:sel_hist_tokens], non_blocking=True)
-        self.packed_v[off:off + sel_hist_tokens].copy_(
-            self.stage_v[:sel_hist_tokens], non_blocking=True)
-        off += sel_hist_tokens
+        with self._profile_range("h2d_pack"):
+            off = 0
+            self.packed_k[off:off + sel_hist_tokens].copy_(
+                self.stage_k[:sel_hist_tokens], non_blocking=True)
+            self.packed_v[off:off + sel_hist_tokens].copy_(
+                self.stage_v[:sel_hist_tokens], non_blocking=True)
+            off += sel_hist_tokens
 
-        sink_len = min(cfg.sink_tokens, self.valid_len)
-        self.packed_k[off:off + sink_len].copy_(self.sink_k[:sink_len])
-        self.packed_v[off:off + sink_len].copy_(self.sink_v[:sink_len])
-        off += sink_len
+            sink_len = min(cfg.sink_tokens, self.valid_len)
+            self.packed_k[off:off + sink_len].copy_(self.sink_k[:sink_len])
+            self.packed_v[off:off + sink_len].copy_(self.sink_v[:sink_len])
+            off += sink_len
 
-        recent_len = min(cfg.recent_tokens, self.valid_len + 1)
-        self.packed_k[off:off + recent_len].copy_(self.recent_k[-recent_len:])
-        self.packed_v[off:off + recent_len].copy_(self.recent_v[-recent_len:])
-        off += recent_len
+            recent_len = min(cfg.recent_tokens, self.valid_len + 1)
+            self.packed_k[off:off + recent_len].copy_(self.recent_k[-recent_len:])
+            self.packed_v[off:off + recent_len].copy_(self.recent_v[-recent_len:])
+            off += recent_len
         total_attend = off
         h2d_ms = (perf_counter() - t_h) * 1000.0
         if h2d_events:
@@ -588,10 +603,11 @@ class M12LayerRuntime:
         # 5. Packed exact attention over [hist | sink | recent]
         attention_events = event_pair("packed_attention")
         t_a = perf_counter()
-        o = self._fused_attention(
-            q, self.packed_k[:total_attend], self.packed_v[:total_attend],
-            hist_len=sel_hist_tokens, sink_len=sink_len, causal_from=total_attend,
-        )
+        with self._profile_range("packed_attention"):
+            o = self._fused_attention(
+                q, self.packed_k[:total_attend], self.packed_v[:total_attend],
+                hist_len=sel_hist_tokens, sink_len=sink_len, causal_from=total_attend,
+            )
         attn_ms = (perf_counter() - t_a) * 1000.0
         if attention_events:
             attention_events[1].record()
@@ -610,7 +626,7 @@ class M12LayerRuntime:
             "total_attend_tokens": total_attend,
         }
 
-        if not bool(torch.isfinite(o).all()):
+        if cfg.check_finite_outputs and not bool(torch.isfinite(o).all()):
             raise RuntimeError("M12 sparse decode output is non-finite")
 
         return o

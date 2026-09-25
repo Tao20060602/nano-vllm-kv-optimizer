@@ -34,8 +34,27 @@ def main() -> None:
     parser.add_argument("--seq-len", type=int, default=32768)
     parser.add_argument("--gen-tokens", type=int, default=32)
     parser.add_argument("--index-select", type=int, choices=(0, 1), required=True)
+    parser.add_argument(
+        "--check-finite-output", action="store_true",
+        help="enable the per-layer finite check (diagnostic baseline; synchronizes CUDA)",
+    )
+    parser.add_argument(
+        "--cuda-stage-profile", action="store_true",
+        help="record CUDA events for the final decode step; adds profiling overhead",
+    )
+    parser.add_argument(
+        "--trace-output", type=Path,
+        help="optional PyTorch CPU/CUDA trace for one steady decode step",
+    )
+    parser.add_argument(
+        "--trace-step", type=int, default=4,
+        help="zero-based decode step to capture after the first four steps",
+    )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
+    if (args.trace_output is not None
+            and (args.trace_step < 0 or args.trace_step >= args.gen_tokens - 1)):
+        raise SystemExit("--trace-step must identify a generated decode step")
     os.environ.setdefault("HF_HOME", HF_HOME)
 
     model = glob.glob(f"{HF_HOME}/hub/models--Qwen--Qwen3-4B/snapshots/*")[0]
@@ -54,6 +73,7 @@ def main() -> None:
         sparse_prefill_chunk_size=4096, sparse_prefill_query_segments=1,
         sparse_prefill_attention_backend="flash",
         sparse_gather_index_select=bool(args.index_select),
+        sparse_check_finite_outputs=args.check_finite_output,
         rope_scaling_override=YARN,
     )
     process = psutil.Process()
@@ -62,32 +82,81 @@ def main() -> None:
     try:
         layers = [m.sparse_rt for m in llm.model_runner.model.modules()
                   if getattr(m, "sparse_rt", None) is not None]
+        expected_prefill_steps = (args.seq_len + 4095) // 4096
         llm.add_request(prompt, SamplingParams(
             max_tokens=args.gen_tokens, temperature=0.0, ignore_eos=True))
         prefill_ms: list[float] = []
         decode_ms: list[float] = []
         output = []
+        profiled_decode_step = None
+        profile_summary = None
         while not llm.is_finished():
-            if len(decode_ms) == args.gen_tokens - 2:
+            if args.cuda_stage_profile and len(decode_ms) == args.gen_tokens - 2:
                 for layer in layers:
                     layer.profile_cuda_stages = True
-            torch.cuda.synchronize()
-            start = time.perf_counter()
-            output, num_scheduled_tokens = llm.step()
-            torch.cuda.synchronize()
-            elapsed = (time.perf_counter() - start) * 1000.0
+            should_profile = (
+                args.trace_output is not None
+                and profiled_decode_step is None
+                and len(prefill_ms) == expected_prefill_steps
+                and len(decode_ms) == args.trace_step
+            )
+            if should_profile:
+                for layer in layers:
+                    layer.profile_torch_stages = True
+                torch.cuda.synchronize()
+                with torch.profiler.profile(
+                    activities=[
+                        torch.profiler.ProfilerActivity.CPU,
+                        torch.profiler.ProfilerActivity.CUDA,
+                    ],
+                    record_shapes=False,
+                    profile_memory=False,
+                    with_stack=False,
+                ) as profiler:
+                    start = time.perf_counter()
+                    output, num_scheduled_tokens = llm.step()
+                    torch.cuda.synchronize()
+                    elapsed = (time.perf_counter() - start) * 1000.0
+                for layer in layers:
+                    layer.profile_torch_stages = False
+                if num_scheduled_tokens >= 0:
+                    raise RuntimeError(
+                        "trace point was expected to be a decode step, but scheduler "
+                        "reported prefill work"
+                    )
+                profiled_decode_step = len(decode_ms)
+                args.trace_output.parent.mkdir(parents=True, exist_ok=True)
+                profiler.export_chrome_trace(str(args.trace_output))
+                profile_summary = profiler.key_averages().table(
+                    sort_by="self_cuda_time_total", row_limit=40
+                )
+                args.trace_output.with_suffix(
+                    args.trace_output.suffix + ".summary.txt"
+                ).write_text(profile_summary + "\n", encoding="utf-8")
+            else:
+                torch.cuda.synchronize()
+                start = time.perf_counter()
+                output, num_scheduled_tokens = llm.step()
+                torch.cuda.synchronize()
+                elapsed = (time.perf_counter() - start) * 1000.0
             (prefill_ms if num_scheduled_tokens > 0 else decode_ms).append(elapsed)
 
-        steady = decode_ms[4:] if len(decode_ms) > 4 else decode_ms
+        if args.trace_output is not None and profiled_decode_step is None:
+            raise RuntimeError("requested decode trace point was not reached")
+
+        steady = [
+            elapsed for index, elapsed in enumerate(decode_ms)
+            if index >= 4 and index != profiled_decode_step
+        ] or decode_ms
         stage_names = ("selector_ms", "cpu_gather_ms", "h2d_pack_ms",
                        "recent_ms", "packed_attn_ms")
         last_stage = {name: sum(layer.timings.get(name, 0.0) for layer in layers)
                       for name in stage_names}
-        cuda_stage = {
+        cuda_stage = ({
             name: sum(layer.cuda_stage_events[name][0].elapsed_time(
                 layer.cuda_stage_events[name][1]) for layer in layers)
             for name in ("selector", "recent", "h2d_pack", "packed_attention")
-        }
+        } if args.cuda_stage_profile else {})
         selected_tokens = layers[0].timings["selected_tokens"]
         bytes_per_token_kv = 2 * 8 * 128 * 2
         result = {
@@ -96,6 +165,7 @@ def main() -> None:
                 "model": model, "seq_len": args.seq_len,
                 "gen_tokens": args.gen_tokens,
                 "index_select": bool(args.index_select), "chunk_size": 4096,
+                "check_finite_output": args.check_finite_output,
                 "query_segments": 1, "prefill_backend": "flash",
                 "block_size": 64, "representatives": 4,
                 "top_k_blocks": 32, "sink_tokens": 64, "recent_tokens": 512,
@@ -111,6 +181,12 @@ def main() -> None:
             },
             "last_decode_stage_ms_36_layers": last_stage,
             "last_decode_cuda_event_ms_36_layers": cuda_stage,
+            "profiling": {
+                "trace_output": str(args.trace_output) if args.trace_output else None,
+                "trace_step_index": profiled_decode_step,
+                "profiled_step_excluded_from_steady_summary": True,
+                "trace_is_diagnostic_not_a_performance_run": True,
+            },
             "payload": {
                 "selected_tokens_per_layer": selected_tokens,
                 "selected_h2d_mib_per_decode_token": (

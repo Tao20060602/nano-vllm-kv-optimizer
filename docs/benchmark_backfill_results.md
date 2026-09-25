@@ -1,6 +1,6 @@
-# M0-M14 Benchmark Backfill
+# M0-M15 Benchmark Backfill and Follow-up
 
-Date: 2026-09-23.  Authoritative environment: `NanoVLLM-Ubuntu`, RTX 3080
+Updated: 2026-09-25.  Authoritative environment: `NanoVLLM-Ubuntu`, RTX 3080
 Laptop 16 GiB, PyTorch 2.7.1+cu128, FlashAttention 2.8.3.post1.  Source baseline
 was clean `main` commit `288e2b3`; benchmark-harness changes were made on
 `codex/benchmark-backfill`.
@@ -70,7 +70,7 @@ much lower GPU-memory footprint and continued operation at 32K.  Dense 32K
 failed in the paged-KV scheduler because it could not allocate enough GPU
 blocks; this was not reported as a CUDA OOM and no fabricated timing is used.
 
-## Long-context quality after the recent-window repair
+## Five-case needle diagnostic after the recent-window repair
 
 All prompts assert that both needle and final question token sequences are
 present.  Qwen3-4B, 64K, q=1, r=4, top-32, chunk=4096:
@@ -82,11 +82,12 @@ present.  Qwen3-4B, 64K, q=1, r=4, top-32, chunk=4096:
 - multikey at 50%: the 16-token run truncated before the answer; a controlled
   32-token rerun passed.
 
-The adjusted result is therefore **3/5**, not the old M12 4/5.  q=4 did not
+The adjusted five-case hit count is therefore **3/5**, not the old M12 4/5.
+This is not an accepted long-context quality score.  q=4 did not
 recover either true failure (0/2) and still passed the 32-token multikey case,
-so it remains opt-in with no demonstrated quality gain.  A first 128K quality
-point (simple needle at 50%) passed in 56.58 s: **1/1 single-case evidence**, not
-a general 128K quality claim.
+so it remains opt-in with no demonstrated gain in this diagnostic.  A first
+128K single-needle case at 50% passed in 56.58 s: **1/1 observation**, not a
+general 128K quality claim.
 
 ## M0-M7 prefix reuse: current-code confirmation
 
@@ -125,6 +126,133 @@ cold reference, median TTFT was 91.20, 72.80, 54.95 and 54.81 ms for 25%, 50%,
 tied shows the local tradeoff: transferring additional old KV can cost about
 as much as recomputing the remaining small suffix.
 
+## M15 system trace and per-layer synchronization A/B
+
+Nsight Systems/Compute were not installed in the WSL environment, so one
+representative trace was captured with `torch.profiler` for a steady decode
+step (32K prompt, Qwen3-4B, 32-token request, `index_select`, trace step 4).
+This trace is diagnostic and is not used as a latency result.  It contains
+22,319 events on the decode step; the GPU activity lane spans 241.6 ms, with
+68.1 ms of recorded kernels and copies and 173.5 ms between GPU events.  That
+gap is not an SM-utilization metric, but it shows that the single stream spends
+substantial time waiting between launches.  No copy/kernel overlap appears in
+the trace.
+
+The GPU recorded 77 pinned H2D copies totaling 31.32 ms for the shape-derived
+288 MiB selected-KV payload (about 9.6 GB/s effective application bandwidth).
+CPU gather operators (`aten::index_select`) totaled 25.62 ms in the profiler.
+The trace also recorded 37 `aten::item`/`aten::is_nonzero` scalar checks and
+182 `cudaStreamSynchronize` calls.  The source had a per-layer
+`bool(torch.isfinite(o).all())` guard, which forces a host-visible scalar
+result during decode.  It is now an opt-in debug check
+(`sparse_check_finite_outputs=True`); it defaults off in the normal M12 path.
+
+Matched guard-on/off A/B, 32K prompt, 32 greedy output tokens, same sparse
+configuration, three alternating pairs, with CUDA event profiling disabled:
+
+| Run | Guard on | Guard off | Reduction |
+| ---: | ---: | ---: | ---: |
+| 1 | 202.36 ms/token | 150.71 ms/token | 25.5% |
+| 2 | 161.56 ms/token | 149.43 ms/token | 7.5% |
+| 3 | 148.38 ms/token | 134.52 ms/token | 9.3% |
+
+All six runs produced identical token IDs.  The median of the three run
+medians fell from 161.56 to 149.43 ms/token (**7.5%**).  Every pair improved,
+but run 1 shows substantial host variance; 7.5% is the conservative summary.
+This A/B supports removing the per-layer scalar synchronization from the hot
+path while retaining the explicit debug check.
+
+## Q block 64 prefill routing ablation
+
+Here `q=64` means that each 4096-token later-prefill chunk is split into 64
+contiguous 64-token query summaries; the existing selector max-reduces scores
+over those summaries.  At 32K, three runs per setting were alternated with
+FlashAttention-2, r=4, top-32 and all other settings fixed.  The first chunk
+does not use this router and varied by seconds between processes, so it is
+excluded when comparing the route itself:
+
+| Later 4096-token chunks | q=1 median total | q=64 median total | q=64 change |
+| --- | ---: | ---: | ---: |
+| Seven later chunks, summed | 10,996.6 ms | 11,337.7 ms | **+3.1% slower** |
+| Per-later-chunk median | 1552.8 ms | 1598.1 ms | **+2.9% slower** |
+
+Both settings peaked at 8.53 GiB GPU allocation.  Summing the first dense
+chunk into total prefill produced an apparent q=64 speedup, but that chunk is
+independent of query routing and its cross-process variance caused that result;
+it is not evidence that q=64 makes prefill faster.
+
+The same synchronized one-token-prefill measurement was repeated at 64K, with
+three alternating runs per setting.  Each request had 16 chunks; only the 15
+later routed chunks are summed below.  The first dense chunk is excluded for
+the same reason as at 32K:
+
+| Pair | q=1 later-chunk total | q=64 later-chunk total | q=64 change |
+| ---: | ---: | ---: | ---: |
+| 1 | 25,684.1 ms | 25,008.4 ms | 2.6% faster |
+| 2 | 26,853.5 ms | 26,344.2 ms | 1.9% faster |
+| 3 | 27,249.8 ms | 27,635.4 ms | 1.4% slower |
+| Median | 26,853.5 ms | 26,344.2 ms | **1.9% faster** |
+
+Peak allocated GPU memory was 8.66 GiB for every run.  The direction was not
+consistent across the three pairs and the median difference is small; treat
+q=64 as effectively tied at 64K, not as an established prefill optimization.
+
+The five 64K synthetic QA cases were rerun at the same 32-token output budget
+for q=1 and q=64.  The added retrieval measure counts layers whose final-chunk
+selection included the block containing the needle.
+
+Here, `pass` means the decoded generated text contains the case's expected
+answer as a case-sensitive substring (`expected in generated_text`).  This is
+a narrow synthetic needle-retrieval check, not a general language-quality
+score or human evaluation.  The q=1 and q=64 results are directly comparable
+within this matched five-case run; comparisons with the older 4/5 report are
+not fully controlled because its output budget and/or evaluation conditions
+were different.  The adjusted 3/5 is a lower result on this test set, but by
+itself does not establish a broad quality regression.
+
+| Case | q=1 answer | q=64 answer | Selected needle layers q=1 / q=64 |
+| --- | --- | --- | ---: |
+| simple-10 | pass | fail | 18 / 17 of 36 |
+| simple-50 | pass | pass | 27 / 22 of 36 |
+| simple-90 | fail | pass | 27 / 26 of 36 |
+| distract-50 | fail | fail | 23 / 21 of 36 |
+| multikey-50 | pass | pass | 23 / 19 of 36 |
+
+Both settings hit **3/5** on this small, single-run diagnostic.  q=64 recovered
+the 90% needle case and lost the 10% case; mean needle-block layer recall was
+58.3% versus 65.6% for q=1.  These observations do not show a general quality
+gain, so q=1 remains the default and q=64 remains an experimental option.
+
+The local trace and per-run raw JSON files are in the ignored `bench_logs/`
+directory and are not part of this change.  The configurations and aggregated
+measurements are recorded above; preserve the local raw files when exact
+per-run reproduction is needed.  The profiler trace is diagnostic and must
+not be used for speed claims.
+
+## 64K sparse decode repeatability
+
+Three independent Qwen3-4B runs used a 64K prompt, 32 greedy output tokens,
+`index_select`, q=1, r=4, top-32, FlashAttention-2, finite-output checking off,
+and the same 4096-token prefill chunks.  Timings synchronize around each engine
+step.  The first four standalone decode steps are excluded from the steady
+median; each run has 27 samples left after that exclusion.  `max_tokens=32`
+contains one token produced during final prefill and 31 standalone decode
+steps.
+
+| Run | Prefill wall | Steady decode median | Output IDs |
+| ---: | ---: | ---: | --- |
+| 1 | 28,554.1 ms | 153.3 ms/token | identical |
+| 2 | 28,155.7 ms | 168.6 ms/token | identical |
+| 3 | 27,298.8 ms | 169.3 ms/token | identical |
+| Median | 28,155.7 ms | **168.6 ms/token** | same 32 IDs |
+
+The steady decode medians span 153.3–169.3 ms/token (about 10.4% from minimum
+to maximum), so a single best run would overstate typical performance.  Peak
+GPU allocation was 8.94 GiB; per-process RSS after generation was 11.77–12.09
+GiB.  A 128K multi-run stability test was deferred: this 64K run already uses
+about 12 GiB of WSL process memory, leaving limited headroom for the roughly
+double-sized CPU KV state.
+
 ## M8-M11 historical comparisons rerun
 
 - **M8, 8192 random tensors:** exact Block-DIPR retained critical-token recall
@@ -149,19 +277,27 @@ as much as recomputing the remaining small suffix.
 
 ## Regression and remaining limits
 
-Full repository regression: **91 passed in 674.71 s**.  M14 targeted CUDA
-layout/backend tests: **6 passed**.
+Earlier baseline validation, before the M15-only changes above: full repository
+regression **91 passed in 674.71 s**; M14 targeted CUDA layout/backend tests
+**6 passed**.  The M15 changes have not been followed by another full-suite
+run.  Current-change checks include Python compilation, `git diff --check`,
+six matched guard A/B model runs and three 64K decode runs with identical
+output IDs, plus the q=1 / q=64 prefill and quality experiments above.
 
 Still not established:
 
-- multi-run 64K/128K TTFT stability;
 - a dense 32K latency baseline (capacity gate prevents execution here);
 - broad 128K quality (only one case);
 - RULER/NeedleBench or production workloads;
 - decode continuations beyond the 512-token recent window;
-- hardware-counter PCIe bandwidth;
-- per-Q-block (`Q block=64`) retrieval, which is a proposed next experiment,
-  not part of this backfill.
+- 128K performance stability across process restarts (deferred for RAM headroom);
+- standard long-context task suites and dense-versus-sparse paired quality;
+- throughput under request concurrency (the sparse engine currently enforces
+  one sequence at a time);
+- hardware-counter PCIe bandwidth or a Nsight Systems/Compute trace.  The
+  current PyTorch trace is useful for timeline diagnosis but does not supply
+  those hardware counters.
 
-All tracked raw records use the `benchmarks/results/backfill_*` prefix.  `.log`
-files remain local diagnostic output; JSON/CSV are the portable evidence.
+Earlier M0-M14 raw records use the `benchmarks/results/backfill_*` prefix.
+M15 per-run JSON, logs, and the profiler trace remain local under ignored
+`bench_logs/`; only their summarized results are recorded in this report.

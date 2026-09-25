@@ -146,6 +146,7 @@ class ModelRunner:
                     dtype=hf_config.dtype,
                     scale=head_dim ** -0.5,
                     use_index_select=config.sparse_gather_index_select,
+                    check_finite_outputs=config.sparse_check_finite_outputs,
                     prefill_query_segments=config.sparse_prefill_query_segments,
                     prefill_attention_backend=config.sparse_prefill_attention_backend,
                 )

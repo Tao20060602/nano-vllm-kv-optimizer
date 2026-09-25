@@ -51,6 +51,8 @@ class Config:
     sparse_prefill_attention_backend: str = "flash"
     # M13: gather selected blocks via one-shot index_select into pinned staging
     sparse_gather_index_select: bool = False
+    # Debug-only finite-output assertion; synchronizes the device per layer.
+    sparse_check_finite_outputs: bool = False
     # -- M12-MVP: YaRN rope scaling override -------------------------------
     # When set, this dict is injected into hf_config.rope_scaling and the
     # max_model_len cap from hf_config.max_position_embeddings is bypassed.

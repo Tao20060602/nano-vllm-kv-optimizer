@@ -1,4 +1,7 @@
-"""Deterministic long-context quality suite for the repaired M14 path."""
+"""Five-case needle diagnostic for the repaired M14 path.
+
+The answer-substring hit is a debugging signal, not a model-quality benchmark.
+"""
 
 from __future__ import annotations
 
@@ -33,7 +36,7 @@ def place(tokens: list[int], payload: list[int], position: int) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--seq-len", type=int, default=65536)
-    parser.add_argument("--query-segments", type=int, choices=(1, 4), required=True)
+    parser.add_argument("--query-segments", type=int, choices=(1, 4, 64), required=True)
     parser.add_argument("--case", default="all")
     parser.add_argument("--max-tokens", type=int, default=16)
     parser.add_argument("--output", type=Path, required=True)
@@ -102,9 +105,23 @@ def main() -> None:
             wall_s = time.perf_counter() - start
             token_ids = list(output[0]["token_ids"])
             text = tokenizer.decode(token_ids)
+            needle_block_id = target // 64
+            selector_layers = [
+                module.sparse_rt
+                for module in llm.model_runner.model.modules()
+                if getattr(module, "sparse_rt", None) is not None
+            ]
+            selected_needle_layers = sum(
+                needle_block_id in layer.last_prefill_block_ids.tolist()
+                for layer in selector_layers
+                if layer.last_prefill_block_ids is not None
+            )
             case_result = {"name": name, "needle_token_position": target,
                            "needle_present": contains(prompt, needle_ids),
                            "question_present": contains(prompt, question_ids),
+                           "needle_block_id": needle_block_id,
+                           "needle_block_selected_layers": selected_needle_layers,
+                           "selector_layers": len(selector_layers),
                            "expected": answer, "hit": answer in text,
                            "generated_token_ids": token_ids,
                            "generated_text": text, "wall_s": wall_s}
