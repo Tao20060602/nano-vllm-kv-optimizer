@@ -63,6 +63,34 @@ def prefill_query_summaries(q: torch.Tensor, nsegments: int) -> torch.Tensor:
     return torch.stack([part.mean(dim=0) for part in torch.tensor_split(q, nsegments)])
 
 
+def dynamic_top_k_from_scores(
+    top_scores: torch.Tensor, max_k: int, target_mass: float,
+) -> int:
+    """Choose a decode budget from half, three quarters, or all candidates.
+
+    The scores are representative-key routing scores, not attention logits.
+    Their standard deviation only removes per-layer scale; the softmax below
+    is a conservative ranking heuristic and must be validated on task quality.
+    Short histories and invalid/flat score lists retain every candidate.
+    """
+    assert top_scores.ndim == 1 and top_scores.device.type == "cpu"
+    assert 0.0 < target_mass <= 1.0 and max_k > 0
+    count = top_scores.numel()
+    if count < max_k or count <= 1 or not bool(torch.isfinite(top_scores).all()):
+        return count
+    scale = top_scores.std(unbiased=False)
+    if float(scale) <= 1e-6:
+        return count
+    weights = torch.softmax((top_scores - top_scores[0]) / scale, dim=0)
+    cumulative = weights.cumsum(dim=0)
+    choices = sorted({max(1, (max_k + 1) // 2),
+                      max(1, (3 * max_k + 3) // 4), max_k})
+    for choice in choices:
+        if float(cumulative[choice - 1]) >= target_mass:
+            return choice
+    return max_k
+
+
 @dataclass
 class M12Config:
     block_size: int = 64
@@ -70,6 +98,9 @@ class M12Config:
     recent_tokens: int = 512
     sink_tokens: int = 64
     top_k_blocks: int = 32
+    decode_top_k_blocks: int | None = None
+    dynamic_top_k: bool = False
+    dynamic_top_k_mass: float = 0.90
     max_model_len: int = 131072
     num_heads: int = 32
     num_kv_heads: int = 8
@@ -150,6 +181,23 @@ class M12LayerRuntime:
         self.record_ids = False
         self.ids_history: list[list[int]] = []
         self.use_index_select = cfg.use_index_select
+
+    def reset(self) -> None:
+        """Start a new sequence without reallocating the large KV buffers.
+
+        Every subsequent read is bounded by these logical lengths. The first
+        prefill chunk overwrites the used CPU KV/reps and sink/recent windows.
+        """
+        self.nblocks_filled = 0
+        self.valid_len = 0
+        self.prefill_len = 0
+        self.last_block_ids = None
+        self.protected_blocks.clear()
+        self.timings.clear()
+        self.last_prefill_query_summaries = 0
+        self.last_prefill_block_ids = None
+        self.cuda_stage_events.clear()
+        self.ids_history.clear()
 
     # ------------------------------------------------------------------
     # Representative construction on GPU (batched over blocks and heads)
@@ -452,7 +500,9 @@ class M12LayerRuntime:
     # ------------------------------------------------------------------
     # GPU selector (fully vectorized)
     # ------------------------------------------------------------------
-    def _gpu_select(self, q: torch.Tensor) -> tuple[torch.Tensor, dict]:
+    def _gpu_select(self, q: torch.Tensor, *, dynamic: bool = False,
+                    budget: int | None = None
+                    ) -> tuple[torch.Tensor, dict]:
         """GPU-vectorized GQA group-score + global temporal top-k.
 
         q: [Hq, D] or [Nq, Hq, D] GPU post-RoPE query summaries.  The Nq
@@ -486,17 +536,27 @@ class M12LayerRuntime:
 
         n_prot = len([p for p in self.protected_blocks if p < nblocks])
         avail = nblocks - n_prot
-        k = min(cfg.top_k_blocks, max(1, avail))
-        _, topk_ids = global_scores.topk(k)
+        requested_k = cfg.top_k_blocks if budget is None else budget
+        k = min(requested_k, max(1, avail))
+        topk_scores, topk_ids = global_scores.topk(k)
 
         t_d2h = perf_counter()
         with self._profile_range("selector_id_d2h"):
+            if dynamic and cfg.dynamic_top_k and k == requested_k:
+                topk_scores_cpu = topk_scores.cpu()
+                chosen = dynamic_top_k_from_scores(
+                    topk_scores_cpu, requested_k, cfg.dynamic_top_k_mass)
+            else:
+                chosen = k
             block_ids_cpu = topk_ids.cpu()
+            if chosen < k:
+                block_ids_cpu = block_ids_cpu[:chosen]
         d2h_ms = (perf_counter() - t_d2h) * 1000.0
 
         return block_ids_cpu, {
             "d2h_ms": d2h_ms,
-            "n_selected": k,
+            "n_selected": chosen,
+            "n_candidates": k,
             "n_query_summaries": nq,
         }
 
@@ -546,7 +606,9 @@ class M12LayerRuntime:
         selector_events = event_pair("selector")
         t_sel = perf_counter()
         with self._profile_range("selector"):
-            block_ids_cpu, sel_info = self._gpu_select(q[0])
+            block_ids_cpu, sel_info = self._gpu_select(
+                q[0], dynamic=cfg.dynamic_top_k,
+                budget=cfg.decode_top_k_blocks)
         selector_ms = (perf_counter() - t_sel) * 1000.0
         if selector_events:
             selector_events[1].record()

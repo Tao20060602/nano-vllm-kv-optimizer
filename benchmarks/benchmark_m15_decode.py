@@ -34,6 +34,9 @@ def main() -> None:
     parser.add_argument("--seq-len", type=int, default=32768)
     parser.add_argument("--gen-tokens", type=int, default=32)
     parser.add_argument("--index-select", type=int, choices=(0, 1), required=True)
+    parser.add_argument("--top-k", type=int, default=32)
+    parser.add_argument("--dynamic-top-k", action="store_true")
+    parser.add_argument("--dynamic-mass", type=float, default=0.90)
     parser.add_argument(
         "--check-finite-output", action="store_true",
         help="enable the per-layer finite check (diagnostic baseline; synchronizes CUDA)",
@@ -70,6 +73,9 @@ def main() -> None:
         use_m12_runtime=True, sparse_selector="query_guided",
         sparse_retrieval_block_size=64, sparse_num_representatives=4,
         sparse_recent_tokens=512, sparse_first_tokens=64, sparse_top_k=32,
+        sparse_decode_top_k=args.top_k,
+        sparse_dynamic_top_k=args.dynamic_top_k,
+        sparse_dynamic_top_k_mass=args.dynamic_mass,
         sparse_prefill_chunk_size=4096, sparse_prefill_query_segments=1,
         sparse_prefill_attention_backend="flash",
         sparse_gather_index_select=bool(args.index_select),
@@ -87,6 +93,8 @@ def main() -> None:
             max_tokens=args.gen_tokens, temperature=0.0, ignore_eos=True))
         prefill_ms: list[float] = []
         decode_ms: list[float] = []
+        decode_k_blocks_by_step: list[list[int]] = []
+        decode_h2d_mib_by_step: list[float] = []
         output = []
         profiled_decode_step = None
         profile_summary = None
@@ -140,6 +148,16 @@ def main() -> None:
                 torch.cuda.synchronize()
                 elapsed = (time.perf_counter() - start) * 1000.0
             (prefill_ms if num_scheduled_tokens > 0 else decode_ms).append(elapsed)
+            if num_scheduled_tokens < 0:
+                selected_tokens_this_step = [
+                    layer.timings["selected_tokens"] for layer in layers
+                ]
+                decode_k_blocks_by_step.append([
+                    tokens // 64 for tokens in selected_tokens_this_step
+                ])
+                decode_h2d_mib_by_step.append(
+                    sum(selected_tokens_this_step) * 2 * 8 * 128 * 2 / 1024**2
+                )
 
         if args.trace_output is not None and profiled_decode_step is None:
             raise RuntimeError("requested decode trace point was not reached")
@@ -157,8 +175,6 @@ def main() -> None:
                 layer.cuda_stage_events[name][1]) for layer in layers)
             for name in ("selector", "recent", "h2d_pack", "packed_attention")
         } if args.cuda_stage_profile else {})
-        selected_tokens = layers[0].timings["selected_tokens"]
-        bytes_per_token_kv = 2 * 8 * 128 * 2
         result = {
             "measurement": "CUDA-synchronized engine steps; decode excludes prefill",
             "config": {
@@ -168,7 +184,10 @@ def main() -> None:
                 "check_finite_output": args.check_finite_output,
                 "query_segments": 1, "prefill_backend": "flash",
                 "block_size": 64, "representatives": 4,
-                "top_k_blocks": 32, "sink_tokens": 64, "recent_tokens": 512,
+                "prefill_top_k_blocks": 32, "decode_top_k_blocks": args.top_k,
+                "dynamic_top_k": args.dynamic_top_k,
+                "dynamic_mass": args.dynamic_mass,
+                "sink_tokens": 64, "recent_tokens": 512,
             },
             "prefill": {"steps": len(prefill_ms), "wall_ms": sum(prefill_ms)},
             "decode": {
@@ -188,9 +207,24 @@ def main() -> None:
                 "trace_is_diagnostic_not_a_performance_run": True,
             },
             "payload": {
-                "selected_tokens_per_layer": selected_tokens,
+                "selected_tokens_per_layer": [
+                    layer.timings["selected_tokens"] for layer in layers
+                ],
+                "selected_blocks_per_layer": [
+                    layer.timings["selected_tokens"] // 64 for layer in layers
+                ],
+                "selected_blocks_by_decode_step": decode_k_blocks_by_step,
+                "selected_blocks_histogram": {
+                    str(k): sum(row.count(k) for row in decode_k_blocks_by_step)
+                    for k in sorted({k for row in decode_k_blocks_by_step for k in row})
+                },
+                "selected_blocks_mean": statistics.mean(
+                    k for row in decode_k_blocks_by_step for k in row
+                ) if decode_k_blocks_by_step else None,
                 "selected_h2d_mib_per_decode_token": (
-                    selected_tokens * bytes_per_token_kv * len(layers) / 1024**2),
+                    sum(layer.timings["selected_tokens"] for layer in layers)
+                    * 2 * 8 * 128 * 2 / 1024**2),
+                "selected_h2d_mib_by_decode_step": decode_h2d_mib_by_step,
             },
             "generated_token_ids": list(output[0][1]) if output else [],
             "runtime": {

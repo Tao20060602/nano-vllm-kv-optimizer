@@ -139,6 +139,9 @@ class ModelRunner:
                     recent_tokens=config.sparse_recent_tokens,
                     sink_tokens=config.sparse_first_tokens or 64,
                     top_k_blocks=config.sparse_top_k,
+                    decode_top_k_blocks=config.sparse_decode_top_k,
+                    dynamic_top_k=config.sparse_dynamic_top_k,
+                    dynamic_top_k_mass=config.sparse_dynamic_top_k_mass,
                     max_model_len=config.max_model_len,
                     num_heads=hf_config.num_attention_heads,
                     num_kv_heads=num_kv_heads,
@@ -233,10 +236,20 @@ class ModelRunner:
         get_tracer().clear()
 
     # -- M11 sparse control -------------------------------------------------
+    def m12_reset(self):
+        """Clear per-sequence M12 state while retaining allocated KV buffers."""
+        if not self.config.use_m12_runtime:
+            return
+        for module in self.model.modules():
+            rt = getattr(module, "sparse_rt", None)
+            if rt is not None and hasattr(rt, "prefill_first"):
+                rt.reset()
+
     def sparse_reset(self):
         from nanovllm.sparse.engine_runtime import reset_all_layer_runtimes, reset_sparse_counters
         reset_all_layer_runtimes()
         reset_sparse_counters()
+        self.m12_reset()
 
     def sparse_set_selector(self, name: str):
         from nanovllm.sparse.engine_runtime import set_all_selectors

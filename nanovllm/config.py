@@ -31,6 +31,13 @@ class Config:
     sparse_recent_tokens: int = 128
     sparse_first_tokens: int = 0
     sparse_top_k: int = 8
+    # Optional decode-only fixed/max budget; prefill still uses sparse_top_k.
+    sparse_decode_top_k: int | None = None
+    # Decode-only adaptive budget; prefill keeps the configured maximum.
+    sparse_dynamic_top_k: bool = False
+    # Fraction of normalized top-k representative score weight to retain.
+    # This is a routing heuristic, not measured attention mass.
+    sparse_dynamic_top_k_mass: float = 0.90
     sparse_beta_raw: float = 48.0
     sparse_num_representatives: int = 4
     sparse_graph_degree: int = 16
@@ -71,6 +78,13 @@ class Config:
         assert self.sparse_recent_tokens >= 0
         assert self.sparse_first_tokens >= 0
         assert self.sparse_top_k >= 0
+        if self.sparse_decode_top_k is not None:
+            assert 1 <= self.sparse_decode_top_k <= self.sparse_top_k
+            assert self.use_m12_runtime, "decode top-k override requires the M12 runtime"
+        assert 0.0 < self.sparse_dynamic_top_k_mass <= 1.0
+        if self.sparse_dynamic_top_k:
+            assert self.use_m12_runtime, "dynamic top-k requires the M12 runtime"
+            assert self.sparse_top_k > 0
         assert self.sparse_beta_raw >= 0
         assert self.sparse_num_representatives > 0
         assert self.sparse_graph_degree > 0

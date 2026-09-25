@@ -67,6 +67,11 @@ class LLMEngine:
         if timer is not None:
             timer.__enter__()
         seqs, is_prefill = self.scheduler.schedule()
+        # M12 keeps one layer-local CPU KV history per active sequence. A new
+        # prompt must not inherit the previous request's blocks/recent window.
+        if (self.model_runner.config.use_m12_runtime and is_prefill
+                and seqs[0].num_cached_tokens == 0):
+            self.model_runner.call("m12_reset")
         num_tokens = sum(seq.num_scheduled_tokens for seq in seqs) if is_prefill else -len(seqs)
         pending_restores = [seq for seq in seqs if seq.cpu_restore_pending]
         if pending_restores:
