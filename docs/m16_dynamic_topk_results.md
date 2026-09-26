@@ -93,11 +93,14 @@ establish general quality preservation. Keep adaptive K disabled by default.
 The focused M14-layout and M16-budget tests passed (`11 passed`), benchmark
 scripts compiled, and `git diff --check` was clean. Real inference runs above
 completed without OOM or non-finite-output errors.
-The existing chunked-prefill previous-recent-window omission is unchanged and
-may affect longer/harder prompts under both policies. Next useful experiments
-would compare adaptive K with fixed K=24 at matched average transfer, include
-larger multi-key/tracing/aggregation samples and a fully pinned official
-RULERv1 pipeline, then profile why reduced gather/H2D is not visible in TPOT.
+The earlier chunked-prefill previous-recent-window omission was fixed in M14:
+later chunks now restore the previous recent K/V before attention. The M16
+performance benchmark still routes each 4096-token prefill chunk using one
+mean-query summary, so reducing prefill Top-K needs separate quality checks.
+Next useful experiments would compare adaptive K with fixed K=24 at matched
+average transfer, include larger multi-key/tracing/aggregation samples and a
+fully pinned official RULERv1 pipeline, then profile why reduced gather/H2D is
+not visible in TPOT.
 
 ## Reproduction pointers
 
