@@ -53,11 +53,21 @@ def main() -> None:
         "--trace-step", type=int, default=4,
         help="zero-based decode step to capture after the first four steps",
     )
+    parser.add_argument(
+        "--nsys-trace-step", type=int,
+        help="zero-based decode step for Nsight Systems cudaProfilerApi capture",
+    )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if (args.trace_output is not None
             and (args.trace_step < 0 or args.trace_step >= args.gen_tokens - 1)):
         raise SystemExit("--trace-step must identify a generated decode step")
+    if (args.nsys_trace_step is not None
+            and (args.nsys_trace_step < 0
+                 or args.nsys_trace_step >= args.gen_tokens - 1)):
+        raise SystemExit("--nsys-trace-step must identify a generated decode step")
+    if args.nsys_trace_step is not None and args.trace_output is not None:
+        raise SystemExit("choose one profiling backend per run")
     os.environ.setdefault("HF_HOME", HF_HOME)
 
     model = glob.glob(f"{HF_HOME}/hub/models--Qwen--Qwen3-4B/snapshots/*")[0]
@@ -97,6 +107,7 @@ def main() -> None:
         decode_h2d_mib_by_step: list[float] = []
         output = []
         profiled_decode_step = None
+        nsys_profiled_decode_step = None
         profile_summary = None
         while not llm.is_finished():
             if args.cuda_stage_profile and len(decode_ms) == args.gen_tokens - 2:
@@ -108,7 +119,33 @@ def main() -> None:
                 and len(prefill_ms) == expected_prefill_steps
                 and len(decode_ms) == args.trace_step
             )
-            if should_profile:
+            should_nsys_profile = (
+                args.nsys_trace_step is not None
+                and nsys_profiled_decode_step is None
+                and len(prefill_ms) == expected_prefill_steps
+                and len(decode_ms) == args.nsys_trace_step
+            )
+            if should_nsys_profile:
+                for layer in layers:
+                    layer.profile_nsys_stages = True
+                torch.cuda.synchronize()
+                torch.cuda.profiler.start()
+                try:
+                    with torch.cuda.nvtx.range("nanokv.decode.step"):
+                        start = time.perf_counter()
+                        output, num_scheduled_tokens = llm.step()
+                        torch.cuda.synchronize()
+                        elapsed = (time.perf_counter() - start) * 1000.0
+                finally:
+                    torch.cuda.profiler.stop()
+                    for layer in layers:
+                        layer.profile_nsys_stages = False
+                if num_scheduled_tokens >= 0:
+                    raise RuntimeError(
+                        "Nsight trace point was expected to be a decode step"
+                    )
+                nsys_profiled_decode_step = len(decode_ms)
+            elif should_profile:
                 for layer in layers:
                     layer.profile_torch_stages = True
                 torch.cuda.synchronize()
@@ -161,10 +198,14 @@ def main() -> None:
 
         if args.trace_output is not None and profiled_decode_step is None:
             raise RuntimeError("requested decode trace point was not reached")
+        if args.nsys_trace_step is not None and nsys_profiled_decode_step is None:
+            raise RuntimeError("requested Nsight decode step was not reached")
 
         steady = [
             elapsed for index, elapsed in enumerate(decode_ms)
-            if index >= 4 and index != profiled_decode_step
+            if index >= 4
+            and index != profiled_decode_step
+            and index != nsys_profiled_decode_step
         ] or decode_ms
         stage_names = ("selector_ms", "cpu_gather_ms", "h2d_pack_ms",
                        "recent_ms", "packed_attn_ms")
@@ -203,6 +244,7 @@ def main() -> None:
             "profiling": {
                 "trace_output": str(args.trace_output) if args.trace_output else None,
                 "trace_step_index": profiled_decode_step,
+                "nsys_trace_step_index": nsys_profiled_decode_step,
                 "profiled_step_excluded_from_steady_summary": True,
                 "trace_is_diagnostic_not_a_performance_run": True,
             },

@@ -59,8 +59,9 @@ class Config:
     # M14: later-chunk packed attention backend.  FlashAttention-2 keeps the
     # same selected blocks and one-softmax semantics as the torch reference.
     sparse_prefill_attention_backend: str = "flash"
-    # M13: gather selected blocks via one-shot index_select into pinned staging
-    sparse_gather_index_select: bool = False
+    # M18: direct gather into pinned staging is the measured M12 default.
+    # Set False to reproduce the legacy advanced-indexing path.
+    sparse_gather_index_select: bool = True
     # Debug-only finite-output assertion; synchronizes the device per layer.
     sparse_check_finite_outputs: bool = False
     # -- M12-MVP: YaRN rope scaling override -------------------------------

@@ -56,12 +56,18 @@ def main() -> None:
                         help="gather CPU blocks directly into pinned staging")
     parser.add_argument("--profile-step", type=int,
                         help="zero-based prefill step to inspect with PyTorch profiler; timing is not comparable")
+    parser.add_argument("--nsys-step", type=int,
+                        help="zero-based prefill step for Nsight Systems cudaProfilerApi capture")
     parser.add_argument("--backend", choices=("torch", "flash"), default="flash")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     assert args.seq_len > args.chunk_size > 0
     if args.profile_step is not None:
         assert 0 <= args.profile_step < (args.seq_len + args.chunk_size - 1) // args.chunk_size
+    if args.nsys_step is not None:
+        assert 0 <= args.nsys_step < (args.seq_len + args.chunk_size - 1) // args.chunk_size
+    if args.profile_step is not None and args.nsys_step is not None:
+        raise SystemExit("choose one profiling backend per run")
 
     os.environ.setdefault("HF_HOME", HF_HOME)
     model = str(args.model) if args.model else sorted(glob.glob(
@@ -104,6 +110,7 @@ def main() -> None:
         decode_step_ms = []
         output = []
         profile_table = None
+        nsys_profiled_step = None
         layers = [
             module.sparse_rt
             for module in llm.model_runner.model.modules()
@@ -112,7 +119,22 @@ def main() -> None:
         while not llm.is_finished():
             torch.cuda.synchronize()
             t0 = time.perf_counter()
-            if args.profile_step == len(prefill_step_ms):
+            if args.nsys_step == len(prefill_step_ms):
+                for layer in layers:
+                    layer.profile_nsys_stages = True
+                torch.cuda.profiler.start()
+                try:
+                    with torch.cuda.nvtx.range("nanokv.prefill.step"):
+                        output, num_scheduled_tokens = llm.step()
+                        torch.cuda.synchronize()
+                finally:
+                    torch.cuda.profiler.stop()
+                    for layer in layers:
+                        layer.profile_nsys_stages = False
+                if num_scheduled_tokens <= 0:
+                    raise RuntimeError("Nsight trace point was not prefill")
+                nsys_profiled_step = len(prefill_step_ms)
+            elif args.profile_step == len(prefill_step_ms):
                 for layer in layers:
                     layer.profile_torch_stages = True
                 with torch.profiler.profile(activities=[
@@ -141,6 +163,8 @@ def main() -> None:
         assert len(valid_lens) == 1 and next(iter(valid_lens)) >= args.seq_len
         assert all(torch.isfinite(layer.reps_gpu[:, :layer.nblocks_filled]).all()
                    for layer in layers)
+        if args.nsys_step is not None and nsys_profiled_step is None:
+            raise RuntimeError("requested Nsight prefill step was not reached")
         result = {
             "measurement": (
                 "CUDA-synchronized engine steps; max_tokens=1 samples the first "
@@ -152,6 +176,7 @@ def main() -> None:
             "prefill_step_ms": prefill_step_ms,
             "decode_step_ms": decode_step_ms,
             "profile_step": args.profile_step,
+            "nsys_profiled_step": nsys_profiled_step,
             "profile_table": profile_table,
             "config": {
                 "model": model,

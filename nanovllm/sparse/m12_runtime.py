@@ -108,7 +108,7 @@ class M12Config:
     head_dim: int = 128
     dtype: torch.dtype = torch.bfloat16
     scale: float = 128.0 ** -0.5
-    use_index_select: bool = False
+    use_index_select: bool = True
     check_finite_outputs: bool = False
     prefill_query_segments: int = 1
     prefill_attention_backend: str = "torch"
@@ -187,6 +187,8 @@ class M12LayerRuntime:
         self.cuda_stage_events: dict[str, tuple[torch.cuda.Event, torch.cuda.Event]] = {}
         # Opt-in PyTorch-profiler ranges; set by profiling benchmarks only.
         self.profile_torch_stages = False
+        # Opt-in NVTX ranges for a bounded Nsight Systems capture.
+        self.profile_nsys_stages = False
         # M13 diagnostic: per-decode-token selected block IDs (default off)
         self.record_ids = False
         self.ids_history: list[list[int]] = []
@@ -595,6 +597,8 @@ class M12LayerRuntime:
         """Return a named profiler range when explicitly enabled."""
         if self.profile_torch_stages:
             return torch.profiler.record_function(f"m12.{name}")
+        if self.profile_nsys_stages:
+            return torch.cuda.nvtx.range(f"m12.{name}.layer{self.layer_id}")
         return nullcontext()
 
     # ------------------------------------------------------------------
