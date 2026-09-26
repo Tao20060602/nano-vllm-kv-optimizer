@@ -31,9 +31,12 @@ class Config:
     sparse_recent_tokens: int = 128
     sparse_first_tokens: int = 0
     sparse_top_k: int = 8
-    # Optional decode-only fixed/max budget; prefill still uses sparse_top_k.
+    # M12 runtime: sparse_top_k remains the allocation/max budget.
+    # Optional prefill-only budget; None preserves the existing behavior.
+    sparse_prefill_top_k: int | None = None
+    # Optional decode-only fixed/max budget.
     sparse_decode_top_k: int | None = None
-    # Decode-only adaptive budget; prefill keeps the configured maximum.
+    # Decode-only adaptive budget; prefill uses its fixed budget independently.
     sparse_dynamic_top_k: bool = False
     # Fraction of normalized top-k representative score weight to retain.
     # This is a routing heuristic, not measured attention mass.
@@ -78,6 +81,9 @@ class Config:
         assert self.sparse_recent_tokens >= 0
         assert self.sparse_first_tokens >= 0
         assert self.sparse_top_k >= 0
+        if self.sparse_prefill_top_k is not None:
+            assert 1 <= self.sparse_prefill_top_k <= self.sparse_top_k
+            assert self.use_m12_runtime, "prefill top-k override requires the M12 runtime"
         if self.sparse_decode_top_k is not None:
             assert 1 <= self.sparse_decode_top_k <= self.sparse_top_k
             assert self.use_m12_runtime, "decode top-k override requires the M12 runtime"

@@ -48,15 +48,25 @@ def main() -> None:
     parser.add_argument("--seq-len", type=int, default=8192)
     parser.add_argument("--chunk-size", type=int, default=4096)
     parser.add_argument("--query-segments", type=int, default=4)
+    parser.add_argument("--prefill-top-k", type=int, choices=(16, 24, 32), default=32)
+    parser.add_argument("--model", type=Path,
+                        help="local model directory; defaults to the cached Qwen3-4B")
+    parser.add_argument("--rope-mode", choices=("native", "yarn"), default="yarn")
+    parser.add_argument("--index-select", action="store_true",
+                        help="gather CPU blocks directly into pinned staging")
+    parser.add_argument("--profile-step", type=int,
+                        help="zero-based prefill step to inspect with PyTorch profiler; timing is not comparable")
     parser.add_argument("--backend", choices=("torch", "flash"), default="flash")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     assert args.seq_len > args.chunk_size > 0
+    if args.profile_step is not None:
+        assert 0 <= args.profile_step < (args.seq_len + args.chunk_size - 1) // args.chunk_size
 
     os.environ.setdefault("HF_HOME", HF_HOME)
-    model = glob.glob(
+    model = str(args.model) if args.model else sorted(glob.glob(
         f"{HF_HOME}/hub/models--Qwen--Qwen3-4B/snapshots/*"
-    )[0]
+    ))[-1]
     tokenizer = AutoTokenizer.from_pretrained(model, use_fast=True)
     prompt_ids = make_prompt(tokenizer, args.seq_len)
     llm = LLM(
@@ -74,10 +84,13 @@ def main() -> None:
         sparse_recent_tokens=512,
         sparse_first_tokens=64,
         sparse_top_k=32,
+        sparse_prefill_top_k=args.prefill_top_k,
+        sparse_decode_top_k=32,
+        sparse_gather_index_select=args.index_select,
         sparse_prefill_chunk_size=args.chunk_size,
         sparse_prefill_query_segments=args.query_segments,
         sparse_prefill_attention_backend=args.backend,
-        rope_scaling_override=YARN,
+        rope_scaling_override=YARN if args.rope_mode == "yarn" else None,
     )
     try:
         process = psutil.Process()
@@ -90,10 +103,29 @@ def main() -> None:
         prefill_step_ms = []
         decode_step_ms = []
         output = []
+        profile_table = None
+        layers = [
+            module.sparse_rt
+            for module in llm.model_runner.model.modules()
+            if getattr(module, "sparse_rt", None) is not None
+        ]
         while not llm.is_finished():
             torch.cuda.synchronize()
             t0 = time.perf_counter()
-            output, num_scheduled_tokens = llm.step()
+            if args.profile_step == len(prefill_step_ms):
+                for layer in layers:
+                    layer.profile_torch_stages = True
+                with torch.profiler.profile(activities=[
+                    torch.profiler.ProfilerActivity.CPU,
+                    torch.profiler.ProfilerActivity.CUDA,
+                ]) as profiler:
+                    output, num_scheduled_tokens = llm.step()
+                for layer in layers:
+                    layer.profile_torch_stages = False
+                profile_table = profiler.key_averages().table(
+                    sort_by="cuda_time_total", row_limit=35)
+            else:
+                output, num_scheduled_tokens = llm.step()
             torch.cuda.synchronize()
             elapsed_ms = (time.perf_counter() - t0) * 1000.0
             if num_scheduled_tokens > 0:
@@ -101,12 +133,7 @@ def main() -> None:
             else:
                 decode_step_ms.append(elapsed_ms)
 
-        layers = [
-            module.sparse_rt
-            for module in llm.model_runner.model.modules()
-            if getattr(module, "sparse_rt", None) is not None
-        ]
-        assert len(layers) == 36
+        assert len(layers) == llm.model_runner.config.hf_config.num_hidden_layers
         valid_lens = {layer.valid_len for layer in layers}
         # Depending on the scheduler's first-token bookkeeping, generate(1)
         # may leave sparse history at prompt length or prompt+one.  Either is
@@ -120,17 +147,25 @@ def main() -> None:
                 "token in the final prefill step and has no standalone decode step"
             ),
             "prefill_wall_ms": sum(prefill_step_ms),
+            "first_chunk_wall_ms": prefill_step_ms[0],
+            "later_chunks_wall_ms": sum(prefill_step_ms[1:]),
             "prefill_step_ms": prefill_step_ms,
             "decode_step_ms": decode_step_ms,
+            "profile_step": args.profile_step,
+            "profile_table": profile_table,
             "config": {
                 "model": model,
+                "rope_mode": args.rope_mode,
                 "seq_len": args.seq_len,
                 "chunk_size": args.chunk_size,
                 "query_segments": args.query_segments,
                 "prefill_attention_backend": args.backend,
                 "block_size": 64,
                 "representatives": 4,
-                "top_k_blocks": 32,
+                "top_k_max_blocks": 32,
+                "prefill_top_k_blocks": args.prefill_top_k,
+                "decode_top_k_blocks": 32,
+                "gather_index_select": args.index_select,
                 "sink_tokens": 64,
                 "recent_tokens": 512,
             },
@@ -139,6 +174,12 @@ def main() -> None:
                 "layers": len(layers),
                 "layer0_valid_len": layers[0].valid_len,
                 "layer0_last_prefill_query_summaries": layers[0].last_prefill_query_summaries,
+                "layer0_last_prefill_selected_blocks": (
+                    layers[0].last_prefill_block_ids.numel()
+                    if layers[0].last_prefill_block_ids is not None else 0
+                ),
+                "cpu_gather_ms_sum_all_layers": sum(
+                    layer.prefill_cpu_gather_ms for layer in layers),
                 "host_rss_before_gib": rss_before / 1024**3,
                 "host_rss_after_gib": process.memory_info().rss / 1024**3,
                 "host_available_after_gib": psutil.virtual_memory().available / 1024**3,

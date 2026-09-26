@@ -90,8 +90,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dense", action="store_true",
                         help="run the dense baseline without passing sparse runtime options")
     parser.add_argument("--model", help="local model path; defaults to cached Qwen3-4B")
+    parser.add_argument("--rope-mode", choices=("native", "yarn"), default="yarn")
     parser.add_argument("--top-k", type=int, default=32,
-                        help="decode history block cap (1-32); prefill remains at 32")
+                        help="decode history block cap (1-32)")
+    parser.add_argument("--prefill-top-k", type=int, choices=(16, 24, 32), default=32,
+                        help="prefill historical block cap; decode budget is unchanged")
     parser.add_argument("--dynamic-top-k", action="store_true",
                         help="adapt decode K using the representative-score heuristic")
     parser.add_argument("--dynamic-mass", type=float, default=0.90,
@@ -106,7 +109,7 @@ def parse_args() -> argparse.Namespace:
     )
     args = parser.parse_args()
     if not 1 <= args.top_k <= 32:
-        parser.error("--top-k must be between 1 and 32 because prefill is fixed at 32")
+        parser.error("--top-k must be between 1 and 32")
     if not 0.0 < args.dynamic_mass <= 1.0:
         parser.error("--dynamic-mass must be in (0, 1]")
     if args.max_tokens <= 0:
@@ -130,7 +133,7 @@ def main() -> None:
         max_num_seqs=1,
         max_model_len=131072,
         dtype="bfloat16",
-        rope_scaling_override=YARN,
+        rope_scaling_override=YARN if args.rope_mode == "yarn" else None,
     )
     if not args.dense:
         llm_config.update(
@@ -142,6 +145,7 @@ def main() -> None:
             sparse_recent_tokens=512,
             sparse_first_tokens=64,
             sparse_top_k=32,
+            sparse_prefill_top_k=args.prefill_top_k,
             sparse_decode_top_k=args.top_k,
             sparse_dynamic_top_k=args.dynamic_top_k,
             sparse_dynamic_top_k_mass=args.dynamic_mass,
@@ -196,7 +200,7 @@ def main() -> None:
         "model": model,
         "rows": len(rows),
         "limit": args.limit,
-        "prefill_top_k": None if args.dense else 32,
+        "prefill_top_k": None if args.dense else args.prefill_top_k,
         "decode_top_k_cap": None if args.dense else args.top_k,
         "dynamic_top_k": False if args.dense else args.dynamic_top_k,
         "dynamic_mass": None if args.dense else args.dynamic_mass,

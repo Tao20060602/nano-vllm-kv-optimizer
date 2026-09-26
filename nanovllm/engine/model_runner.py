@@ -139,6 +139,7 @@ class ModelRunner:
                     recent_tokens=config.sparse_recent_tokens,
                     sink_tokens=config.sparse_first_tokens or 64,
                     top_k_blocks=config.sparse_top_k,
+                    prefill_top_k_blocks=config.sparse_prefill_top_k,
                     decode_top_k_blocks=config.sparse_decode_top_k,
                     dynamic_top_k=config.sparse_dynamic_top_k,
                     dynamic_top_k_mass=config.sparse_dynamic_top_k_mass,

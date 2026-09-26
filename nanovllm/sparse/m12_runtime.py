@@ -98,6 +98,7 @@ class M12Config:
     recent_tokens: int = 512
     sink_tokens: int = 64
     top_k_blocks: int = 32
+    prefill_top_k_blocks: int | None = None
     decode_top_k_blocks: int | None = None
     dynamic_top_k: bool = False
     dynamic_top_k_mass: float = 0.90
@@ -111,6 +112,14 @@ class M12Config:
     check_finite_outputs: bool = False
     prefill_query_segments: int = 1
     prefill_attention_backend: str = "torch"
+
+    def __post_init__(self):
+        for name, budget in (
+            ("prefill_top_k_blocks", self.prefill_top_k_blocks),
+            ("decode_top_k_blocks", self.decode_top_k_blocks),
+        ):
+            if budget is not None and not 1 <= budget <= self.top_k_blocks:
+                raise ValueError(f"{name} must be in [1, top_k_blocks]")
 
 
 class M12LayerRuntime:
@@ -171,6 +180,7 @@ class M12LayerRuntime:
         self.timings: dict[str, float] = {}
         self.last_prefill_query_summaries = 0
         self.last_prefill_block_ids: torch.Tensor | None = None
+        self.prefill_cpu_gather_ms = 0.0
         # Opt-in benchmark probe. Events are recorded without synchronizing;
         # the caller reads them after the enclosing engine step is synchronized.
         self.profile_cuda_stages = False
@@ -196,6 +206,7 @@ class M12LayerRuntime:
         self.timings.clear()
         self.last_prefill_query_summaries = 0
         self.last_prefill_block_ids = None
+        self.prefill_cpu_gather_ms = 0.0
         self.cuda_stage_events.clear()
         self.ids_history.clear()
 
@@ -336,7 +347,8 @@ class M12LayerRuntime:
     def prefill_first(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor) -> dict:
         """Store the first chunk; dense attention is done by the caller (FA2)."""
         assert self.prefill_len == 0, "prefill_first called after history exists"
-        self._store_kv(k, v)
+        with self._profile_range("prefill_first_store_kv"):
+            self._store_kv(k, v)
         return {"nblocks": self.nblocks_filled, "valid_len": self.valid_len}
 
     # ------------------------------------------------------------------
@@ -361,51 +373,70 @@ class M12LayerRuntime:
         # 1. Select historical blocks from one or more local query summaries.
         # Four segment means preserve intent that a 4096-token global mean
         # would otherwise cancel, while leaving the block/H2D budget unchanged.
-        q_summary = prefill_query_summaries(q, cfg.prefill_query_segments)
-        self.last_prefill_query_summaries = q_summary.shape[0]
-        hist_ids, sel_info = self._gpu_select(q_summary)  # [K] CPU
+        with self._profile_range("prefill_selector"):
+            q_summary = prefill_query_summaries(q, cfg.prefill_query_segments)
+            self.last_prefill_query_summaries = q_summary.shape[0]
+            if cfg.prefill_top_k_blocks is None:
+                hist_ids, sel_info = self._gpu_select(q_summary)  # [K] CPU
+            else:
+                hist_ids, sel_info = self._gpu_select(
+                    q_summary, budget=cfg.prefill_top_k_blocks)  # [K] CPU
 
         # 2. CPU batch gather selected historical blocks into pinned staging.
         Ksel = hist_ids.shape[0]
         sel_hist_tokens = Ksel * B
-        sel_k = self.k_cpu[hist_ids].reshape(sel_hist_tokens, Hkv, D)
-        sel_v = self.v_cpu[hist_ids].reshape(sel_hist_tokens, Hkv, D)
-        self.stage_k[:sel_hist_tokens].copy_(sel_k)
-        self.stage_v[:sel_hist_tokens].copy_(sel_v)
+        t_gather = perf_counter()
+        with self._profile_range("prefill_cpu_gather"):
+            if self.use_index_select:
+                flat_k = self.k_cpu[:self.cpu_blocks_cap].view(-1, Hkv, D)
+                flat_v = self.v_cpu[:self.cpu_blocks_cap].view(-1, Hkv, D)
+                tok_idx = (hist_ids.view(-1, 1) * B
+                           + torch.arange(B, dtype=torch.long)).reshape(-1)
+                torch.index_select(flat_k, 0, tok_idx, out=self.stage_k[:sel_hist_tokens])
+                torch.index_select(flat_v, 0, tok_idx, out=self.stage_v[:sel_hist_tokens])
+            else:
+                sel_k = self.k_cpu[hist_ids].reshape(sel_hist_tokens, Hkv, D)
+                sel_v = self.v_cpu[hist_ids].reshape(sel_hist_tokens, Hkv, D)
+                self.stage_k[:sel_hist_tokens].copy_(sel_k)
+                self.stage_v[:sel_hist_tokens].copy_(sel_v)
+        self.prefill_cpu_gather_ms += (perf_counter() - t_gather) * 1000.0
 
         # 3. Fused packed exact attention.  The current chunk must not update
         # recent before this pack is assembled: selector protection excluded the
         # *previous* recent blocks, so they have to be explicitly restored here.
-        sink_len = min(cfg.sink_tokens, self.valid_len)
-        _, recent_offset, recent_len = prefill_recent_slice(
-            self.valid_len, cfg.sink_tokens, cfg.recent_tokens)
-        total = sel_hist_tokens + sink_len + recent_len + T
-        k_pack = torch.empty(total, Hkv, D, dtype=k.dtype, device=device)
-        v_pack = torch.empty(total, Hkv, D, dtype=k.dtype, device=device)
+        with self._profile_range("prefill_h2d_pack"):
+            sink_len = min(cfg.sink_tokens, self.valid_len)
+            _, recent_offset, recent_len = prefill_recent_slice(
+                self.valid_len, cfg.sink_tokens, cfg.recent_tokens)
+            total = sel_hist_tokens + sink_len + recent_len + T
+            k_pack = torch.empty(total, Hkv, D, dtype=k.dtype, device=device)
+            v_pack = torch.empty(total, Hkv, D, dtype=k.dtype, device=device)
 
-        off = 0
-        k_pack[off:off + sel_hist_tokens] = self.stage_k[:sel_hist_tokens].to(device)
-        v_pack[off:off + sel_hist_tokens] = self.stage_v[:sel_hist_tokens].to(device)
-        off += sel_hist_tokens
-        k_pack[off:off + sink_len] = self.sink_k[:sink_len]
-        v_pack[off:off + sink_len] = self.sink_v[:sink_len]
-        off += sink_len
+            off = 0
+            k_pack[off:off + sel_hist_tokens] = self.stage_k[:sel_hist_tokens].to(device)
+            v_pack[off:off + sel_hist_tokens] = self.stage_v[:sel_hist_tokens].to(device)
+            off += sel_hist_tokens
+            k_pack[off:off + sink_len] = self.sink_k[:sink_len]
+            v_pack[off:off + sink_len] = self.sink_v[:sink_len]
+            off += sink_len
 
-        if recent_len:
-            recent_end = recent_offset + recent_len
-            k_pack[off:off + recent_len] = self.recent_k[recent_offset:recent_end]
-            v_pack[off:off + recent_len] = self.recent_v[recent_offset:recent_end]
-            off += recent_len
+            if recent_len:
+                recent_end = recent_offset + recent_len
+                k_pack[off:off + recent_len] = self.recent_k[recent_offset:recent_end]
+                v_pack[off:off + recent_len] = self.recent_v[recent_offset:recent_end]
+                off += recent_len
 
-        k_pack[off:off + T] = k
-        v_pack[off:off + T] = v
+            k_pack[off:off + T] = k
+            v_pack[off:off + T] = v
 
-        o = self._prefill_attention(q, k_pack, v_pack, causal_from=off)
+        with self._profile_range("prefill_attention"):
+            o = self._prefill_attention(q, k_pack, v_pack, causal_from=off)
 
         # Current K/V become history only after current-chunk attention has
         # consumed the previous recent window.  This order avoids the old gap
         # where protected recent blocks were neither selected nor packed.
-        self._store_kv(k, v)
+        with self._profile_range("prefill_store_kv"):
+            self._store_kv(k, v)
         self.last_prefill_block_ids = hist_ids.clone()
         self.last_block_ids = hist_ids
         return o
