@@ -49,3 +49,21 @@ def test_prompt_hash_mismatch_between_sparse_arms_fails_closeout():
         runner.require_matched_prompts(
             {"sparse_baseline": baseline, "m21_static_mask": m21}, expected_samples=2,
         )
+
+
+def test_summary_result_paths_do_not_duplicate_run_id(tmp_path, monkeypatch):
+    spec = runner.DatasetSpec(32768, "niah_single_1", "niah", 1, 128)
+    monkeypatch.setattr(runner, "DATASETS", (spec,))
+    run_id = "fixed-run"
+    result_dir = tmp_path / run_id
+    plan = {"results_dir": str(result_dir), "model": "fixed-model"}
+    result = {
+        "rows": [{"prompt_sha256": "same", "output_token_ids": [1], "prediction": "answer"}],
+        "adapter_source": {"core_file_sha256": {"runtime": "same-source"}},
+        "metric": {"score_percent": 100.0},
+        "hit_max_tokens_count": 0,
+    }
+    results = {(32768, spec.task_name, arm): result for arm in runner.arms_for(spec)}
+    summary = runner.build_summary(plan, "plan-hash", results, run_id)
+    for arm, values in summary["tasks"][0]["arms"].items():
+        assert Path(values["result_path"]) == result_dir / f"32768_niah_single_1_{arm}.json"
