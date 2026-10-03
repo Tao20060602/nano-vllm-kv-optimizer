@@ -21,12 +21,13 @@ from __future__ import annotations
 
 import argparse
 import glob
+import hashlib
 import json
 import os
+import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-
-from nanovllm import LLM, SamplingParams
 
 
 HF_HOME = "/opt/models/.cache/huggingface"
@@ -37,6 +38,14 @@ YARN = {
     "original_max_position_embeddings": 32768,
     "rope_theta": 1000000,
 }
+CORE_HASH_FILES = (
+    "benchmarks/benchmark_m16_ruler.py",
+    "nanovllm/config.py",
+    "nanovllm/engine/llm_engine.py",
+    "nanovllm/engine/model_runner.py",
+    "nanovllm/engine/sequence.py",
+    "nanovllm/sampling_params.py",
+)
 
 
 def read_jsonl(path: Path, limit: int | None = None) -> list[dict[str, Any]]:
@@ -80,7 +89,11 @@ def resolve_model(model_arg: str | None) -> str:
     return matches[-1]
 
 
-def parse_args() -> argparse.Namespace:
+def metadata_path_for_output(output: Path) -> Path:
+    return output.with_suffix(output.suffix + ".metadata.json")
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Generate RULER-compatible predictions with NanoKV (one prompt at a time).")
     parser.add_argument("--input", type=Path, required=True, help="generated RULER JSONL")
@@ -89,6 +102,8 @@ def parse_args() -> argparse.Namespace:
                         help="run only the first N rows (same input prefix for matched comparisons)")
     parser.add_argument("--dense", action="store_true",
                         help="run the dense baseline without passing sparse runtime options")
+    parser.add_argument("--selector-static-mask", action="store_true",
+                        help="opt in to the M21 cached protected-index mask in sparse mode")
     parser.add_argument("--model", help="local model path; defaults to cached Qwen3-4B")
     parser.add_argument("--rope-mode", choices=("native", "yarn"), default="yarn")
     parser.add_argument("--top-k", type=int, default=32,
@@ -101,33 +116,36 @@ def parse_args() -> argparse.Namespace:
                         help="target normalized selector-score mass for dynamic K")
     parser.add_argument("--max-tokens", type=int, required=True,
                         help="greedy token limit; set per RULER task (v1 defaults vary by task)")
+    parser.add_argument("--cpu-threads", type=int, default=8,
+                        help="PyTorch CPU intra-op thread count")
     parser.add_argument(
         "--thinking-mode", choices=("disabled", "default", "enabled"),
         default="disabled",
         help=("Qwen chat-template thinking behavior for RULERv1; disabled is the "
               "default so short task budgets go to the scored answer"),
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if not 1 <= args.top_k <= 32:
         parser.error("--top-k must be between 1 and 32")
     if not 0.0 < args.dynamic_mass <= 1.0:
         parser.error("--dynamic-mass must be in (0, 1]")
     if args.max_tokens <= 0:
         parser.error("--max-tokens must be positive")
+    if args.cpu_threads <= 0:
+        parser.error("--cpu-threads must be positive")
     if args.limit is not None and args.limit <= 0:
         parser.error("--limit must be positive")
     if args.input.resolve() == args.output.resolve():
         parser.error("--output must not overwrite --input")
+    if metadata_path_for_output(args.output).resolve() == args.input.resolve():
+        parser.error("prediction metadata sidecar must not overwrite --input")
+    if args.dense and args.selector_static_mask:
+        parser.error("--selector-static-mask cannot be combined with --dense")
     return args
 
 
-def main() -> None:
-    args = parse_args()
-    os.environ.setdefault("HF_HOME", HF_HOME)
-    model = resolve_model(args.model)
-    rows = read_jsonl(args.input, limit=args.limit)
-
-    llm_config = dict(
+def build_llm_config(args: argparse.Namespace) -> dict[str, Any]:
+    llm_config: dict[str, Any] = dict(
         enforce_eager=True,
         tensor_parallel_size=1,
         max_num_seqs=1,
@@ -153,16 +171,157 @@ def main() -> None:
             sparse_prefill_query_segments=1,
             sparse_prefill_attention_backend="flash",
             sparse_gather_index_select=True,
+            sparse_selector_static_mask=args.selector_static_mask,
         )
+    return llm_config
+
+
+def utc_timestamp() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def source_provenance(repo_root: Path | None = None) -> dict[str, Any]:
+    if repo_root is None:
+        repo_root = Path(__file__).resolve().parents[1]
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo_root, check=True,
+        capture_output=True, text=True,
+    ).stdout.strip()
+    status = subprocess.run(
+        ["git", "status", "--short", "--untracked-files=all"], cwd=repo_root,
+        check=True, capture_output=True, text=True,
+    ).stdout
+    return {
+        "git_head": head,
+        "dirty": bool(status.strip()),
+        "dirty_paths": status.splitlines(),
+        "core_file_sha256": {
+            relative_path: sha256_file(repo_root / relative_path)
+            for relative_path in CORE_HASH_FILES
+        },
+    }
+
+
+def engine_input_token_length(tokenizer: Any, prompt: str) -> int:
+    # Match LLM.add_request exactly: tokenizer.encode(prompt), with the
+    # tokenizer's default add_special_tokens behavior.
+    return len(tokenizer.encode(prompt))
+
+
+def build_quality_metadata(
+    prompt: str,
+    output_token_ids: list[int],
+    tokenizer: Any,
+    max_tokens: int,
+) -> dict[str, Any]:
+    output_ids = [int(token_id) for token_id in output_token_ids]
+    return {
+        "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+        "input_token_length": engine_input_token_length(tokenizer, prompt),
+        "output_token_ids": output_ids,
+        "generated_tokens": len(output_ids),
+        "hit_max_tokens": len(output_ids) == max_tokens,
+    }
+
+
+def build_row_audit(
+    row_number: int,
+    source_row: dict[str, Any],
+    quality: dict[str, Any],
+) -> dict[str, Any]:
+    identity_keys = ("task", "task_name", "dataset", "dataset_name", "index", "id", "sample_id")
+    return {
+        "row_number": row_number,
+        "input_index": source_row.get("index"),
+        "source_identity": {
+            key: source_row[key] for key in identity_keys if key in source_row
+        },
+        **quality,
+    }
+
+
+def build_run_metadata(
+    args: argparse.Namespace,
+    model: str,
+    llm_config: dict[str, Any],
+    input_sha256: str,
+    source: dict[str, Any],
+    run_started_at: str,
+    run_ended_at: str,
+    input_format: str,
+    rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "schema_version": 1,
+        "status": "complete",
+        "input": {
+            "path": str(args.input.resolve()),
+            "sha256": input_sha256,
+            "format": input_format,
+            "limit": args.limit,
+            "rows_processed": len(rows),
+        },
+        "output": {
+            "path": str(args.output.resolve()),
+            "metadata_path": str(metadata_path_for_output(args.output).resolve()),
+            "format": "ruler-prediction-jsonl",
+        },
+        "model": model,
+        "source": source,
+        "run_started_at": run_started_at,
+        "run_ended_at": run_ended_at,
+        "configuration": {
+            "llm": llm_config,
+            "cpu_threads": args.cpu_threads,
+            "thinking_mode": args.thinking_mode,
+            "sampling": {
+                "temperature": 0.0,
+                "max_tokens": args.max_tokens,
+                "ignore_eos": False,
+            },
+        },
+        "hit_max_tokens_definition": (
+            "true when returned generated_tokens equals max_tokens; the engine output "
+            "does not expose the stopping reason when EOS and the cap coincide"
+        ),
+        "hit_max_tokens_count": sum(row["hit_max_tokens"] for row in rows),
+        "rows": rows,
+    }
+
+
+def main() -> None:
+    args = parse_args()
+    from nanovllm import LLM, SamplingParams
+    import torch
+
+    run_started_at = utc_timestamp()
+    torch.set_num_threads(args.cpu_threads)
+    os.environ.setdefault("HF_HOME", HF_HOME)
+    model = resolve_model(args.model)
+    input_sha256 = sha256_file(args.input)
+    rows = read_jsonl(args.input, limit=args.limit)
+    llm_config = build_llm_config(args)
+    source = source_provenance()
     llm = LLM(model, **llm_config)
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     temporary = args.output.with_suffix(args.output.suffix + ".tmp")
+    metadata_path = metadata_path_for_output(args.output)
+    metadata_temporary = metadata_path.with_suffix(metadata_path.suffix + ".tmp")
     sampling = SamplingParams(
         max_tokens=args.max_tokens,
         temperature=0.0,
         ignore_eos=False,
     )
+    row_metadata: list[dict[str, Any]] = []
     try:
         with temporary.open("w", encoding="utf-8", buffering=1) as destination:
             for row_number, source_row in enumerate(rows, start=1):
@@ -183,20 +342,44 @@ def main() -> None:
                     prompt = formatted_question + source_row["generation"]
                     prediction_key = "generation"
                 generated = llm.generate([prompt], sampling, use_tqdm=False)
+                output_token_ids = list(generated[0]["token_ids"])
+                quality = build_quality_metadata(
+                    prompt, output_token_ids, llm.tokenizer, args.max_tokens,
+                )
                 prediction = dict(source_row)
                 prediction[prediction_key] = generated[0]["text"]
                 destination.write(json.dumps(prediction, ensure_ascii=False) + "\n")
+                row_metadata.append(build_row_audit(row_number, source_row, quality))
                 print(f"[{row_number}/{len(rows)}] index={source_row.get('index', row_number - 1)}")
         temporary.replace(args.output)
     except Exception:
         temporary.unlink(missing_ok=True)
+        metadata_temporary.unlink(missing_ok=True)
         raise
     finally:
         llm.exit()
 
+    input_format = "rulerv1-ns" if "question" in rows[0] else "legacy-ruler"
+    run_metadata = build_run_metadata(
+        args=args,
+        model=model,
+        llm_config=llm_config,
+        input_sha256=input_sha256,
+        source=source,
+        run_started_at=run_started_at,
+        run_ended_at=utc_timestamp(),
+        input_format=input_format,
+        rows=row_metadata,
+    )
+    with metadata_temporary.open("w", encoding="utf-8") as destination:
+        json.dump(run_metadata, destination, ensure_ascii=False, indent=2)
+        destination.write("\n")
+    metadata_temporary.replace(metadata_path)
+
     print(json.dumps({
         "input": str(args.input),
         "output": str(args.output),
+        "metadata": str(metadata_path),
         "model": model,
         "rows": len(rows),
         "limit": args.limit,
@@ -207,9 +390,11 @@ def main() -> None:
         "max_tokens": args.max_tokens,
         "sampling": "greedy",
         "ignore_eos": False,
+        "cpu_threads": args.cpu_threads,
         "thinking_mode": args.thinking_mode,
-        "input_format": "rulerv1-ns" if "question" in rows[0] else "legacy-ruler",
+        "input_format": input_format,
         "dense": args.dense,
+        "selector_static_mask": args.selector_static_mask,
     }, indent=2))
 
 
