@@ -109,11 +109,16 @@ class M12Config:
     dtype: torch.dtype = torch.bfloat16
     scale: float = 128.0 ** -0.5
     use_index_select: bool = True
+    decode_kv_pipeline: bool = False
+    selector_cuda_graph: bool = False
+    selector_static_mask: bool = False
     check_finite_outputs: bool = False
     prefill_query_segments: int = 1
     prefill_attention_backend: str = "torch"
 
     def __post_init__(self):
+        if self.decode_kv_pipeline and not self.use_index_select:
+            raise ValueError("decode_kv_pipeline requires use_index_select")
         for name, budget in (
             ("prefill_top_k_blocks", self.prefill_top_k_blocks),
             ("decode_top_k_blocks", self.decode_top_k_blocks),
@@ -193,6 +198,44 @@ class M12LayerRuntime:
         self.record_ids = False
         self.ids_history: list[list[int]] = []
         self.use_index_select = cfg.use_index_select
+        self._selector_graph = None
+        self._selector_graph_key = None
+        self._selector_graph_q = None
+        self._selector_graph_outputs = None
+        self._selector_graph_protected = None
+        self._selector_static_mask = None
+        self._selector_static_mask_key = None
+        self._reps_version = 0
+        self.selector_graph_setup_ms = 0.0
+        self.selector_graph_builds = 0
+
+    def _clear_selector_graph(self) -> None:
+        # Each sequence/shape owns at most one graph, not an accumulating cache.
+        self._selector_graph = None
+        self._selector_graph_key = None
+        self._selector_graph_q = None
+        self._selector_graph_outputs = None
+        self._selector_graph_protected = None
+
+    def _clear_selector_static_mask(self) -> None:
+        self._selector_static_mask = None
+        self._selector_static_mask_key = None
+
+    def _protected_ids_for_nblocks(self, nblocks: int) -> tuple[int, ...]:
+        # Protected block IDs are nonnegative internal indices. Ignore IDs
+        # beyond the currently filled history, just like the legacy selector.
+        return tuple(sorted(p for p in self.protected_blocks if 0 <= p < nblocks))
+
+    def _get_selector_static_mask(self, protected_ids: tuple[int, ...], device):
+        if not protected_ids:
+            self._clear_selector_static_mask()
+            return None
+        key = (protected_ids, torch.device(device))
+        if key != self._selector_static_mask_key:
+            self._selector_static_mask = torch.tensor(
+                protected_ids, dtype=torch.long, device=device)
+            self._selector_static_mask_key = key
+        return self._selector_static_mask
 
     def reset(self) -> None:
         """Start a new sequence without reallocating the large KV buffers.
@@ -211,6 +254,10 @@ class M12LayerRuntime:
         self.prefill_cpu_gather_ms = 0.0
         self.cuda_stage_events.clear()
         self.ids_history.clear()
+        self._clear_selector_graph()
+        self._clear_selector_static_mask()
+        self.selector_graph_setup_ms = 0.0
+        self.selector_graph_builds = 0
 
     # ------------------------------------------------------------------
     # Representative construction on GPU (batched over blocks and heads)
@@ -223,6 +270,8 @@ class M12LayerRuntime:
         mean-direction real key + farthest-point directional coverage;
         normalization is used ONLY for selection; stored reps are raw real K.
         """
+        self._clear_selector_graph()
+        self._reps_version += 1
         cfg = self.cfg
         B, Hkv, D, r = cfg.block_size, cfg.num_kv_heads, cfg.head_dim, cfg.r
         N = nblocks
@@ -533,8 +582,67 @@ class M12LayerRuntime:
     # ------------------------------------------------------------------
     # GPU selector (fully vectorized)
     # ------------------------------------------------------------------
+    def _selector_graph_ops(self, q: torch.Tensor, nblocks: int, k: int,
+                            protected: torch.Tensor):
+        """Original FP32 scoring/reduction order, with graph-safe static IDs."""
+        cfg = self.cfg
+        q_g = q.view(q.shape[0], cfg.num_kv_heads, self.groups_per_kv, cfg.head_dim)
+        scores = torch.einsum(
+            "nhgd,hbrd->nhgbr", q_g.float(), self.reps_gpu[:, :nblocks].float())
+        scores = scores.amax(dim=-1).amax(dim=2).amax(dim=0)
+        global_scores = scores.amax(dim=0)
+        if protected.numel():
+            # Scalar advanced assignment may copy a host scalar to CUDA and
+            # synchronize. index_fill_ passes the scalar directly to a kernel.
+            global_scores.index_fill_(0, protected, float("-inf"))
+        return global_scores.topk(k)
+
+    def _graph_select(self, q: torch.Tensor, nblocks: int, k: int):
+        # Filter on CPU: a CUDA boolean-indexed result has a data-dependent
+        # shape and can synchronize, making it unsafe to capture.
+        protected_ids = tuple(sorted(p for p in self.protected_blocks if p < nblocks))
+        key = (nblocks, k, protected_ids, tuple(q.shape), q.dtype, q.device,
+               self.reps_gpu.data_ptr(), self._reps_version)
+        if key != self._selector_graph_key:
+            self._clear_selector_graph()
+            started = perf_counter()
+            static_q = torch.empty_like(q)
+            static_q.copy_(q)
+            protected = torch.tensor(protected_ids, dtype=torch.long, device=q.device)
+            stream = torch.cuda.Stream(device=q.device)
+            stream.wait_stream(torch.cuda.current_stream(q.device))
+            with torch.cuda.stream(stream):
+                for _ in range(3):
+                    warm_outputs = self._selector_graph_ops(static_q, nblocks, k, protected)
+            torch.cuda.current_stream(q.device).wait_stream(stream)
+            del warm_outputs
+            graph = torch.cuda.CUDAGraph()
+            # torch.cuda.graph's convenience context globally synchronizes,
+            # runs Python GC, and empties the allocator cache on EACH entry.
+            # There are 36 per-layer graphs here. Warm and finish the capture
+            # stream explicitly, then use raw capture without repeated GC.
+            # Sparse M12 is single-sequence, TP=1, eager: no concurrent capture.
+            with torch.cuda.stream(stream):
+                stream.synchronize()
+                graph.capture_begin()
+                try:
+                    outputs = self._selector_graph_ops(static_q, nblocks, k, protected)
+                finally:
+                    graph.capture_end()
+            self._selector_graph_q = static_q
+            self._selector_graph_protected = protected
+            self._selector_graph_outputs = outputs
+            self._selector_graph = graph
+            self._selector_graph_key = key
+            self.selector_graph_setup_ms += (perf_counter() - started) * 1000.0
+            self.selector_graph_builds += 1
+        self._selector_graph_q.copy_(q)
+        self._selector_graph.replay()
+        return self._selector_graph_outputs
+
     def _gpu_select(self, q: torch.Tensor, *, dynamic: bool = False,
-                    budget: int | None = None
+                    budget: int | None = None, use_graph: bool = False,
+                    use_static_mask: bool = False
                     ) -> tuple[torch.Tensor, dict]:
         """GPU-vectorized GQA group-score + global temporal top-k.
 
@@ -550,28 +658,34 @@ class M12LayerRuntime:
             q = q.unsqueeze(0)
         assert q.ndim == 3 and q.shape[1:] == (Hq, D)
         nq = q.shape[0]
-        q_g = q.view(nq, Hkv, self.groups_per_kv, D)  # [Nq, Hkv, G, D]
-
-        scores = torch.einsum(
-            "nhgd,hbrd->nhgbr", q_g.float(), self.reps_gpu[:, :nblocks].float()
-        )  # [Nq, Hkv, G, nblocks, r]
-        scores = scores.amax(dim=-1)        # max over r: [Nq, Hkv, G, nblocks]
-        scores = scores.amax(dim=2)         # max over Q heads: [Nq, Hkv, nblocks]
-        scores = scores.amax(dim=0)         # max over query summaries: [Hkv, nblocks]
-        global_scores = scores.amax(dim=0)  # global temporal: [nblocks]
-
-        if self.protected_blocks:
-            prot = torch.tensor(sorted(self.protected_blocks),
-                                dtype=torch.long, device=global_scores.device)
-            prot = prot[prot < nblocks]
-            if prot.numel() > 0:
-                global_scores[prot] = float("-inf")
-
-        n_prot = len([p for p in self.protected_blocks if p < nblocks])
+        static_mask = use_static_mask and not (use_graph and cfg.selector_cuda_graph)
+        protected_ids = (self._protected_ids_for_nblocks(nblocks)
+                         if static_mask else None)
+        n_prot = (len(protected_ids) if static_mask else
+                  len([p for p in self.protected_blocks if p < nblocks]))
         avail = nblocks - n_prot
         requested_k = cfg.top_k_blocks if budget is None else budget
         k = min(requested_k, max(1, avail))
-        topk_scores, topk_ids = global_scores.topk(k)
+        if use_graph and cfg.selector_cuda_graph:
+            topk_scores, topk_ids = self._graph_select(q, nblocks, k)
+        else:
+            q_g = q.view(nq, Hkv, self.groups_per_kv, D)
+            scores = torch.einsum(
+                "nhgd,hbrd->nhgbr", q_g.float(), self.reps_gpu[:, :nblocks].float())
+            scores = scores.amax(dim=-1).amax(dim=2).amax(dim=0)
+            global_scores = scores.amax(dim=0)
+            if static_mask:
+                protected = self._get_selector_static_mask(
+                    protected_ids, global_scores.device)
+                if protected is not None:
+                    global_scores.index_fill_(0, protected, float("-inf"))
+            elif self.protected_blocks:
+                prot = torch.tensor(sorted(self.protected_blocks),
+                                    dtype=torch.long, device=global_scores.device)
+                prot = prot[prot < nblocks]
+                if prot.numel() > 0:
+                    global_scores[prot] = float("-inf")
+            topk_scores, topk_ids = global_scores.topk(k)
 
         t_d2h = perf_counter()
         with self._profile_range("selector_id_d2h"):
@@ -643,7 +757,8 @@ class M12LayerRuntime:
         with self._profile_range("selector"):
             block_ids_cpu, sel_info = self._gpu_select(
                 q[0], dynamic=cfg.dynamic_top_k,
-                budget=cfg.decode_top_k_blocks)
+                budget=cfg.decode_top_k_blocks, use_graph=cfg.selector_cuda_graph,
+                use_static_mask=cfg.selector_static_mask)
         selector_ms = (perf_counter() - t_sel) * 1000.0
         if selector_events:
             selector_events[1].record()
@@ -658,13 +773,13 @@ class M12LayerRuntime:
         t_g = perf_counter()
         with self._profile_range("cpu_gather"):
             if self.use_index_select:
-                # one-shot index_select directly into pinned staging: no pageable temp
                 flat_k = self.k_cpu[:self.cpu_blocks_cap].view(-1, Hkv, D)
                 flat_v = self.v_cpu[:self.cpu_blocks_cap].view(-1, Hkv, D)
                 tok_idx = (block_ids_cpu.view(-1, 1) * B
                            + torch.arange(B, dtype=torch.long)).reshape(-1)
                 torch.index_select(flat_k, 0, tok_idx, out=self.stage_k[:sel_hist_tokens])
-                torch.index_select(flat_v, 0, tok_idx, out=self.stage_v[:sel_hist_tokens])
+                if not cfg.decode_kv_pipeline:
+                    torch.index_select(flat_v, 0, tok_idx, out=self.stage_v[:sel_hist_tokens])
             else:
                 sel_k = self.k_cpu[block_ids_cpu].reshape(sel_hist_tokens, Hkv, D)
                 sel_v = self.v_cpu[block_ids_cpu].reshape(sel_hist_tokens, Hkv, D)
@@ -676,12 +791,23 @@ class M12LayerRuntime:
         h2d_events = event_pair("h2d_pack")
         t_h = perf_counter()
         with self._profile_range("h2d_pack"):
-            off = 0
-            self.packed_k[off:off + sel_hist_tokens].copy_(
+            self.packed_k[:sel_hist_tokens].copy_(
                 self.stage_k[:sel_hist_tokens], non_blocking=True)
-            self.packed_v[off:off + sel_hist_tokens].copy_(
+        h2d_ms = (perf_counter() - t_h) * 1000.0
+        if cfg.decode_kv_pipeline:
+            # K DMA may progress while the CPU fills a DISTINCT V staging
+            # buffer. No host slice is overwritten before its copy completes.
+            # All GPU work stays on the current stream: V and attention remain
+            # ordered after K, without an extra stream or CUDA synchronization.
+            t_gv = perf_counter()
+            with self._profile_range("cpu_gather"):
+                torch.index_select(flat_v, 0, tok_idx, out=self.stage_v[:sel_hist_tokens])
+            gather_ms += (perf_counter() - t_gv) * 1000.0
+        t_h = perf_counter()
+        with self._profile_range("h2d_pack"):
+            self.packed_v[:sel_hist_tokens].copy_(
                 self.stage_v[:sel_hist_tokens], non_blocking=True)
-            off += sel_hist_tokens
+            off = sel_hist_tokens
 
             sink_len = min(cfg.sink_tokens, self.valid_len)
             self.packed_k[off:off + sink_len].copy_(self.sink_k[:sink_len])
@@ -693,7 +819,7 @@ class M12LayerRuntime:
             self.packed_v[off:off + recent_len].copy_(self.recent_v[-recent_len:])
             off += recent_len
         total_attend = off
-        h2d_ms = (perf_counter() - t_h) * 1000.0
+        h2d_ms += (perf_counter() - t_h) * 1000.0
         if h2d_events:
             h2d_events[1].record()
 
@@ -717,6 +843,9 @@ class M12LayerRuntime:
             "d2h_ms": sel_info.get("d2h_ms", 0.0),
             "cpu_gather_ms": gather_ms,
             "h2d_pack_ms": h2d_ms,
+            # CUDA events span the pipeline's CPU V gather too; they are not
+            # an exclusive device-memcpy measurement in this mode.
+            "h2d_event_spans_cpu_gather": cfg.decode_kv_pipeline,
             "recent_ms": recent_ms,
             "packed_attn_ms": attn_ms,
             "selected_tokens": sel_hist_tokens,

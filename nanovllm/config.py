@@ -62,6 +62,12 @@ class Config:
     # M18: direct gather into pinned staging is the measured M12 default.
     # Set False to reproduce the legacy advanced-indexing path.
     sparse_gather_index_select: bool = True
+    # M20 experiment: enqueue K H2D before gathering V during decode only.
+    sparse_decode_kv_pipeline: bool = False
+    # M19: capture the decode GPU selector; CPU KV gather stays outside graphs.
+    sparse_selector_cuda_graph: bool = False
+    # M21: reuse a cached GPU protected-index tensor for eager decode selection.
+    sparse_selector_static_mask: bool = False
     # Debug-only finite-output assertion; synchronizes the device per layer.
     sparse_check_finite_outputs: bool = False
     # -- M12-MVP: YaRN rope scaling override -------------------------------
@@ -92,6 +98,13 @@ class Config:
         if self.sparse_dynamic_top_k:
             assert self.use_m12_runtime, "dynamic top-k requires the M12 runtime"
             assert self.sparse_top_k > 0
+        if self.sparse_selector_cuda_graph:
+            assert self.use_m12_runtime, "selector CUDA graph requires the M12 runtime"
+        if self.sparse_selector_static_mask:
+            assert self.use_m12_runtime, "static selector mask requires the M12 runtime"
+        if self.sparse_decode_kv_pipeline:
+            assert self.use_m12_runtime, "KV pipeline requires the M12 runtime"
+            assert self.sparse_gather_index_select, "KV pipeline requires index_select"
         assert self.sparse_beta_raw >= 0
         assert self.sparse_num_representatives > 0
         assert self.sparse_graph_degree > 0
