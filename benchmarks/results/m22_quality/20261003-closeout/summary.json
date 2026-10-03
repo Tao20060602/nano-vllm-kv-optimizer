@@ -1,0 +1,197 @@
+{
+  "schema_version": 1,
+  "status": "complete",
+  "run_id": "20261003-closeout",
+  "run_identity": "ff16a3781ef5314a1b5206a8d4cc7d8639bf277c5e129ad636c2bb284e736994",
+  "claim_scope": "bounded matched quality regression screen; not a full RULER benchmark",
+  "ruler_commit": "c3f5e3b4f87f97e048793bb510a3a6b19a46bf3a",
+  "model": "/opt/models/.cache/huggingface/hub/models--Qwen--Qwen3-4B/snapshots/1cfa9a7208912126459214e8b04321603b3df60c",
+  "seed": 42,
+  "arms": [
+    "dense",
+    "sparse_baseline",
+    "m21_static_mask"
+  ],
+  "tasks": [
+    {
+      "context_tokens": 8192,
+      "task": "niah_single_1",
+      "metric_task": "niah",
+      "samples": 20,
+      "max_new_tokens": 128,
+      "arms": {
+        "dense": {
+          "score_percent": 100.0,
+          "hit_max_tokens_count": 20,
+          "result_path": "/opt/nano-vllm/benchmarks/results/m22_quality/20261003-closeout/8192_niah_single_1_dense.json"
+        },
+        "sparse_baseline": {
+          "score_percent": 100.0,
+          "hit_max_tokens_count": 20,
+          "result_path": "/opt/nano-vllm/benchmarks/results/m22_quality/20261003-closeout/8192_niah_single_1_sparse_baseline.json"
+        },
+        "m21_static_mask": {
+          "score_percent": 100.0,
+          "hit_max_tokens_count": 20,
+          "result_path": "/opt/nano-vllm/benchmarks/results/m22_quality/20261003-closeout/8192_niah_single_1_m21_static_mask.json"
+        }
+      },
+      "core_source_sha256": {
+        "benchmarks/benchmark_m16_ruler.py": "464e7e5618db2ddfc833e85ae5e6a185c5b1483f43c03b4c959b70b63a8e770a",
+        "nanovllm/config.py": "812f41bb6c68a5ccad58e74f8e0c0d2228d90e3e3cb0458421aacd374bcc6349",
+        "nanovllm/engine/llm_engine.py": "99f5081602fb5f3ce31ef90d74aab7292513edc8189be9d0eb2b11cc0f301629",
+        "nanovllm/engine/model_runner.py": "1f7be547b93639f7893a1a468c7762bbbf0da6a9a202edda56e9d99da4c4ae0e",
+        "nanovllm/engine/sequence.py": "b2bddbf791d6d3cba6df2bbfa86e8ec22291973ef8274521586fdd03a15d86f4",
+        "nanovllm/sampling_params.py": "493d63de99a1a931f4584aaba395f838ce8b36a7b220186f321d8ee7d6c67b5d"
+      },
+      "sparse_baseline_vs_m21": {
+        "token_ids_equal_samples": 20,
+        "text_equal_samples": 20,
+        "samples": 20,
+        "score_delta_percentage_points": 0.0
+      }
+    },
+    {
+      "context_tokens": 8192,
+      "task": "niah_multikey_2",
+      "metric_task": "niah",
+      "samples": 20,
+      "max_new_tokens": 128,
+      "arms": {
+        "dense": {
+          "score_percent": 100.0,
+          "hit_max_tokens_count": 20,
+          "result_path": "/opt/nano-vllm/benchmarks/results/m22_quality/20261003-closeout/8192_niah_multikey_2_dense.json"
+        },
+        "sparse_baseline": {
+          "score_percent": 80.0,
+          "hit_max_tokens_count": 20,
+          "result_path": "/opt/nano-vllm/benchmarks/results/m22_quality/20261003-closeout/8192_niah_multikey_2_sparse_baseline.json"
+        },
+        "m21_static_mask": {
+          "score_percent": 80.0,
+          "hit_max_tokens_count": 20,
+          "result_path": "/opt/nano-vllm/benchmarks/results/m22_quality/20261003-closeout/8192_niah_multikey_2_m21_static_mask.json"
+        }
+      },
+      "core_source_sha256": {
+        "benchmarks/benchmark_m16_ruler.py": "464e7e5618db2ddfc833e85ae5e6a185c5b1483f43c03b4c959b70b63a8e770a",
+        "nanovllm/config.py": "812f41bb6c68a5ccad58e74f8e0c0d2228d90e3e3cb0458421aacd374bcc6349",
+        "nanovllm/engine/llm_engine.py": "99f5081602fb5f3ce31ef90d74aab7292513edc8189be9d0eb2b11cc0f301629",
+        "nanovllm/engine/model_runner.py": "1f7be547b93639f7893a1a468c7762bbbf0da6a9a202edda56e9d99da4c4ae0e",
+        "nanovllm/engine/sequence.py": "b2bddbf791d6d3cba6df2bbfa86e8ec22291973ef8274521586fdd03a15d86f4",
+        "nanovllm/sampling_params.py": "493d63de99a1a931f4584aaba395f838ce8b36a7b220186f321d8ee7d6c67b5d"
+      },
+      "sparse_baseline_vs_m21": {
+        "token_ids_equal_samples": 20,
+        "text_equal_samples": 20,
+        "samples": 20,
+        "score_delta_percentage_points": 0.0
+      }
+    },
+    {
+      "context_tokens": 8192,
+      "task": "vt",
+      "metric_task": "variable_tracking",
+      "samples": 20,
+      "max_new_tokens": 30,
+      "arms": {
+        "dense": {
+          "score_percent": 97.0,
+          "hit_max_tokens_count": 20,
+          "result_path": "/opt/nano-vllm/benchmarks/results/m22_quality/20261003-closeout/8192_vt_dense.json"
+        },
+        "sparse_baseline": {
+          "score_percent": 92.0,
+          "hit_max_tokens_count": 20,
+          "result_path": "/opt/nano-vllm/benchmarks/results/m22_quality/20261003-closeout/8192_vt_sparse_baseline.json"
+        },
+        "m21_static_mask": {
+          "score_percent": 92.0,
+          "hit_max_tokens_count": 20,
+          "result_path": "/opt/nano-vllm/benchmarks/results/m22_quality/20261003-closeout/8192_vt_m21_static_mask.json"
+        }
+      },
+      "core_source_sha256": {
+        "benchmarks/benchmark_m16_ruler.py": "464e7e5618db2ddfc833e85ae5e6a185c5b1483f43c03b4c959b70b63a8e770a",
+        "nanovllm/config.py": "812f41bb6c68a5ccad58e74f8e0c0d2228d90e3e3cb0458421aacd374bcc6349",
+        "nanovllm/engine/llm_engine.py": "99f5081602fb5f3ce31ef90d74aab7292513edc8189be9d0eb2b11cc0f301629",
+        "nanovllm/engine/model_runner.py": "1f7be547b93639f7893a1a468c7762bbbf0da6a9a202edda56e9d99da4c4ae0e",
+        "nanovllm/engine/sequence.py": "b2bddbf791d6d3cba6df2bbfa86e8ec22291973ef8274521586fdd03a15d86f4",
+        "nanovllm/sampling_params.py": "493d63de99a1a931f4584aaba395f838ce8b36a7b220186f321d8ee7d6c67b5d"
+      },
+      "sparse_baseline_vs_m21": {
+        "token_ids_equal_samples": 20,
+        "text_equal_samples": 20,
+        "samples": 20,
+        "score_delta_percentage_points": 0.0
+      }
+    },
+    {
+      "context_tokens": 32768,
+      "task": "niah_single_1",
+      "metric_task": "niah",
+      "samples": 10,
+      "max_new_tokens": 128,
+      "arms": {
+        "sparse_baseline": {
+          "score_percent": 100.0,
+          "hit_max_tokens_count": 10,
+          "result_path": "/opt/nano-vllm/benchmarks/results/m22_quality/20261003-closeout/32768_niah_single_1_sparse_baseline.json"
+        },
+        "m21_static_mask": {
+          "score_percent": 100.0,
+          "hit_max_tokens_count": 10,
+          "result_path": "/opt/nano-vllm/benchmarks/results/m22_quality/20261003-closeout/32768_niah_single_1_m21_static_mask.json"
+        }
+      },
+      "core_source_sha256": {
+        "benchmarks/benchmark_m16_ruler.py": "464e7e5618db2ddfc833e85ae5e6a185c5b1483f43c03b4c959b70b63a8e770a",
+        "nanovllm/config.py": "812f41bb6c68a5ccad58e74f8e0c0d2228d90e3e3cb0458421aacd374bcc6349",
+        "nanovllm/engine/llm_engine.py": "99f5081602fb5f3ce31ef90d74aab7292513edc8189be9d0eb2b11cc0f301629",
+        "nanovllm/engine/model_runner.py": "1f7be547b93639f7893a1a468c7762bbbf0da6a9a202edda56e9d99da4c4ae0e",
+        "nanovllm/engine/sequence.py": "b2bddbf791d6d3cba6df2bbfa86e8ec22291973ef8274521586fdd03a15d86f4",
+        "nanovllm/sampling_params.py": "493d63de99a1a931f4584aaba395f838ce8b36a7b220186f321d8ee7d6c67b5d"
+      },
+      "sparse_baseline_vs_m21": {
+        "token_ids_equal_samples": 10,
+        "text_equal_samples": 10,
+        "samples": 10,
+        "score_delta_percentage_points": 0.0
+      }
+    },
+    {
+      "context_tokens": 32768,
+      "task": "niah_multikey_2",
+      "metric_task": "niah",
+      "samples": 10,
+      "max_new_tokens": 128,
+      "arms": {
+        "sparse_baseline": {
+          "score_percent": 0.0,
+          "hit_max_tokens_count": 10,
+          "result_path": "/opt/nano-vllm/benchmarks/results/m22_quality/20261003-closeout/32768_niah_multikey_2_sparse_baseline.json"
+        },
+        "m21_static_mask": {
+          "score_percent": 0.0,
+          "hit_max_tokens_count": 10,
+          "result_path": "/opt/nano-vllm/benchmarks/results/m22_quality/20261003-closeout/32768_niah_multikey_2_m21_static_mask.json"
+        }
+      },
+      "core_source_sha256": {
+        "benchmarks/benchmark_m16_ruler.py": "464e7e5618db2ddfc833e85ae5e6a185c5b1483f43c03b4c959b70b63a8e770a",
+        "nanovllm/config.py": "812f41bb6c68a5ccad58e74f8e0c0d2228d90e3e3cb0458421aacd374bcc6349",
+        "nanovllm/engine/llm_engine.py": "99f5081602fb5f3ce31ef90d74aab7292513edc8189be9d0eb2b11cc0f301629",
+        "nanovllm/engine/model_runner.py": "1f7be547b93639f7893a1a468c7762bbbf0da6a9a202edda56e9d99da4c4ae0e",
+        "nanovllm/engine/sequence.py": "b2bddbf791d6d3cba6df2bbfa86e8ec22291973ef8274521586fdd03a15d86f4",
+        "nanovllm/sampling_params.py": "493d63de99a1a931f4584aaba395f838ce8b36a7b220186f321d8ee7d6c67b5d"
+      },
+      "sparse_baseline_vs_m21": {
+        "token_ids_equal_samples": 10,
+        "text_equal_samples": 10,
+        "samples": 10,
+        "score_delta_percentage_points": 0.0
+      }
+    }
+  ]
+}

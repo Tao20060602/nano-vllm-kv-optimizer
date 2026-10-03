@@ -4,26 +4,90 @@
 
 # NanoKV
 
-**NanoKV is an educational extension of [nano-vLLM](https://github.com/GeeeekExplorer/nano-vllm)
-that implements and evaluates GPU/CPU KV-cache reuse, longest-prefix matching,
-KV offloading to host memory, restoration back to GPU, and an observable
-cache lifecycle.** It is a teaching and measurement project, not a production
-serving stack.
+**NanoKV is an educational, single-sequence sparse-attention prototype built
+on [nano-vLLM](https://github.com/GeeeekExplorer/nano-vllm).** Its current
+Qwen3-4B path keeps full per-layer K/V history on the CPU, GPU-side block
+representatives plus protected sink/recent K/V, and gathers selected history
+for decode. It is a teaching and measurement project, not a production serving
+stack.
+
+## Current status — project closeout (2026-10-03)
+
+The current reference setup is Qwen3-4B BF16 (snapshot
+`1cfa9a7208912126459214e8b04321603b3df60c`) on an RTX 3080 Laptop (16 GiB),
+TP=1/eager, YaRN, 32K repeated-text prompt, 4096-token prefill chunks,
+64-token blocks with `r=4` representatives, Top-32 selection, a 64-token sink,
+and a 512-token recent window. The reported decode comparisons use greedy
+generation. This is a narrow engineering workload, not a general quality or
+serving benchmark.
+
+| Path | Current default | Evidence boundary |
+| --- | --- | --- |
+| Direct pinned CPU gather (`index_select(..., out=pinned)`) | On by default (M18) | Three matched 32K pairs had identical output IDs; paired steady-median reductions were 11.8–18.8% on one repeated prompt. This does not establish a general gain. |
+| Static protected-block mask (M21) | Opt-in, off by default | Two fresh-process pairs matched output IDs and selected-block histories; mean decode time after the first four steps was 7.40% and 10.46% lower per pair on that prompt. |
+| Selector CUDA graph (M19) | Opt-in, off by default | Corrected fresh-process timing direction was mixed; the interleaved result does not settle the effect. |
+| K/V copy pipeline (M20) | Opt-in, off by default | All three latest decode comparisons recorded higher pipeline times; they do not establish a general effect or prove a causal slowdown. |
+| Adaptive decode or reduced prefill Top-K (M16–M17) | Experimental, off by default | Adaptive decode did not show a TPOT gain. A small multi-key screen regressed when prefill K was lowered, so quality preservation is not established. |
+
+Experiment details: [M16](docs/m16_dynamic_topk_results.md),
+[M17](docs/m17_prefill_budget_results.md),
+[M18](docs/m18_nsight_gather_results.md),
+[M19](docs/m19_selector_graph_results.md),
+[M20](docs/m20_gather_results.md), and
+[M21](docs/m21_selector_static_mask_results.md).
+
+### Final quality evidence (M22)
+
+The pinned NVIDIA/RULER generators and reference-matching metric were used on
+80 fixed prompts (220 generations). This is a bounded subset, not a full
+leaderboard or broad long-context quality claim.
+
+| Context / task | Samples | Dense | Sparse baseline | M21 |
+| --- | ---: | ---: | ---: | ---: |
+| 8K single target | 20 | 100 | 100 | 100 |
+| 8K similar-key distractors | 20 | 100 | 80 | 80 |
+| 8K variable tracking | 20 | 97 | 92 | 92 |
+| 32K single target | 10 | not run | 100 | 100 |
+| 32K similar-key distractors | 10 | not run | 0 | 0 |
+
+M21 and the sparse baseline produced identical generated token IDs and text
+on **80/80** prompts. However, the sparse configuration loses quality relative
+to dense in the 8K distractor and variable-tracking tasks, and fails all ten
+32K distractor cases. **This is not lossless sparse attention or validated
+general long-context retrieval.** Variable tracking reports reference-item
+recall, not the percentage of fully solved chains. All generations reached
+their fixed task cap. 32K dense was not run; no dense-paired conclusion is made
+at that length.
+
+See the [complete quality report](docs/m22_quality_closeout_results.md),
+[public per-sample evidence](benchmarks/results/m22_quality/20261003-closeout/),
+and [project closeout / reproduction boundaries](docs/PROJECT_CLOSEOUT.md).
+
+**Project status:** closed at the user's request. No further engineering
+experiments are planned; future changes are limited to interview preparation,
+reproduction support, or factual documentation corrections unless the project
+is reopened.
 
 ## Attribution and scope
 
 NanoKV builds on the public nano-vLLM project, imported at upstream commit
 `bb823b3e06983d71485a8e1f23715ebd87d98ef8` (MIT license, 2026-09-19). The
 upstream engine, model definitions, attention kernels, and sampler are
-retained as the execution baseline. NanoKV adds a CPU-backed KV tier and
-instrumentation on top; it does **not** claim to have reimplemented
+retained as the execution baseline. NanoKV adds sparse-attention experiments
+and instrumentation on top; it does **not** claim to have reimplemented
 nano-vLLM from scratch, and it is **not** a complete AlayaDB replacement.
 
 See [`docs/upstream.md`](docs/upstream.md) for the exact upstream pin and
 [`docs/architecture.md`](docs/architecture.md) for the baseline call chain
 that must be preserved when the feature flag is off.
 
-## What NanoKV adds over upstream
+## Historical M0–M6: CPU-backed prefix reuse
+
+The following sections preserve the earlier CPUBlockStore prefix-reuse
+milestones. They describe the M0–M6 implementation and measurements, not the
+current Qwen3-4B sparse-decode configuration above.
+
+### What NanoKV added over upstream
 
 Upstream nano-vLLM has GPU-resident prefix caching: when a physical GPU
 block's reference count drops to zero, its hash metadata is dropped and the
@@ -44,7 +108,7 @@ NanoKV adds:
 - a reproducible benchmark comparing cold, GPU-hit, CPU-pageable,
   CPU-pinned, and partial-hit behavior.
 
-## System architecture
+### M0–M6 system architecture
 
 ```text
 LLMEngine.add_request(token IDs)
@@ -67,7 +131,7 @@ LLMEngine.add_request(token IDs)
 `ModelRunner` owns `GPUBlockStore`, `CPUBlockStore`, and all KV tensor copies.
 The scheduler never touches K/V tensors directly.
 
-## Quick Start
+### M0–M6 quick start
 
 The authoritative environment is WSL2 distribution `NanoVLLM-Ubuntu`,
 repo `/opt/nano-vllm`, virtualenv `.venv`:
@@ -104,7 +168,7 @@ print(llm.get_cpu_cache_stats())
 PY
 ```
 
-## Feature matrix
+### M0–M6 feature matrix
 
 | Capability | Status |
 | --- | --- |
@@ -125,7 +189,7 @@ PY
 | Distributed serving, TP>1, batch>1 | not implemented |
 | SSD / remote tier, compression, quantization | not implemented |
 
-## Correctness
+### M0–M6 correctness snapshot
 
 See [`docs/correctness.md`](docs/correctness.md) for the full evidence list.
 Summary:
@@ -138,7 +202,7 @@ Summary:
   cold-baseline tokens.
 - With `enable_cpu_cache=False`, the engine follows the upstream call chain.
 
-## Benchmark results (Milestone 6)
+### Historical benchmark results (M6)
 
 Full methodology: [`docs/benchmark_methodology.md`](docs/benchmark_methodology.md).
 Raw data and generated report: `benchmarks/results/m6/`.
@@ -168,7 +232,7 @@ Takeaways from the generated `conclusions.json`:
   H2D restore, not the index.
 - CPU store capacity in the benchmark is 64 blocks = 16,384 cached tokens.
 
-## Hardware and software environment
+### M0–M6 hardware and software environment
 
 - WSL2 (`Linux 6.18.33.2-microsoft-standard-WSL2`), glibc 2.39
 - GPU: NVIDIA GeForce RTX 3080 Laptop (16 GiB)
@@ -176,7 +240,7 @@ Takeaways from the generated `conclusions.json`:
 - Model: Qwen3-0.6B, bfloat16, block size 256
 - One KV block = 29,360,128 bytes (28 MiB) for this model
 
-## Key design choices
+### M0–M6 design choices
 
 - **Upstream stays the default.** Every NanoKV behavior is behind
   `enable_cpu_cache` / `enable_reusable_cache` flags that default off.
@@ -194,29 +258,32 @@ Takeaways from the generated `conclusions.json`:
 
 ## Known limitations
 
-See [`docs/limitations.md`](docs/limitations.md). In short: synchronous copies
-only, process-local host memory, batch size one, TP=1, eager only, no sparse
-attention / ANN / distributed tier / compression.
+See [`docs/limitations.md`](docs/limitations.md) for the current validation
+boundary and the separately labeled M0–M6 CPUBlockStore caveats. NanoKV is
+single-sequence and educational; the recent timing and output-equivalence
+checks do not establish broad quality or production behavior.
 
 ## Roadmap
 
-- async / overlapped H2D transfer with prefill of the suffix;
-- continuous batching and chunked-prefill interaction with the CPU tier;
-- KV compression or low-rank offload;
-- a second GPU / multi-process shared CPU pool;
-- decode-time KV offload (not just prefill prefix).
+There is no active engineering roadmap. The project is closed at the user's
+request; only interview-driven explanation, reproduction support, and
+documentation corrections remain in scope unless it is reopened.
 
 ## Repository layout
 
 ```
-nanovllm/kvdb/         fingerprint, metrics, prefix index, CPU/GPU stores
+nanovllm/sparse/       current representative selector and sparse decode path
+nanovllm/kvdb/         retained CPU-backed prefix-reuse implementation
 nanovllm/engine/       llm_engine, scheduler, model_runner, block_manager
-benchmarks/            validation + M6 benchmark driver and report generator
-docs/                  upstream, architecture, correctness, limitations,
-                       benchmark methodology, end-to-end reuse walkthrough
-tests/                 28 tests, all passing
+benchmarks/            current sparse experiments and historical M6 drivers
+docs/                  architecture, limitations, M13–M21 evidence reports
+tests/                 correctness and regression tests
 ```
-## M8–M11: block-sparse decode + CPU KV offload (educational)
+## Historical milestones M8–M11: block-sparse decode + CPU KV offload
+
+This section preserves the early Qwen3-0.6B milestone snapshot. Its timings
+and implementation details are historical; use the M16–M21 reports and the
+pending M22 closeout report for later evidence.
 
 M8–M11 extend the engine with block-level sparse attention inspired by AlayaDB
 DIPR/DIPRS. This is a **single-sequence educational prototype**:

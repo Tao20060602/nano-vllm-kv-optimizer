@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "run_id": "20261003-closeout",
+  "model": "/opt/models/.cache/huggingface/hub/models--Qwen--Qwen3-4B/snapshots/1cfa9a7208912126459214e8b04321603b3df60c",
+  "results_dir": "/opt/nano-vllm/benchmarks/results/m22_quality/20261003-closeout",
+  "work_dir": "/opt/nano-vllm/bench_logs/m22_quality",
+  "input_manifest_sha256": "a066e85e16789358ee273a4506203348499d7bbd24c737d36473b86fa5338cbf",
+  "ruler_commit": "c3f5e3b4f87f97e048793bb510a3a6b19a46bf3a",
+  "ruler_source_sha256": {
+    "scripts/data/prepare.py": "f2d210860fbf5c640cb41ed104c7a923c9f4043f6e6c354277daacc73afc643d",
+    "scripts/synthetic.yaml": "34bc71dcacdc41a829a170f04b528fbf48d62c616338005ab4991680fbf8cb0b",
+    "scripts/data/synthetic/constants.py": "6296e901d495ec6200dc3f68993ea13d8282e3c0dbe1a8c47967f111105d1fde",
+    "scripts/data/synthetic/niah.py": "e9cada0a7660d274fe73a1338a90a7087e17b630169f1aaf14a8d3221c6805b5",
+    "scripts/data/synthetic/variable_tracking.py": "9aac483420e158d116ab63fc43b9606bdb284ac0c053288c30776d5c365530e5",
+    "scripts/data/tokenizer.py": "c2e4bfab607eef87a86334558303c1811bc8e93f22a5c4b129f302726d2357a4",
+    "scripts/data/template.py": "2e82d85152212136fffcd5624b158a2c75fd5036ec1c537f4b21eeb78fd18069",
+    "scripts/eval/synthetic/constants.py": "6740467c17b8dc06b6b30f4f97e54ce8de81db0dd879f1538d0b6b5727f4bd5f",
+    "scripts/eval/evaluate.py": "b9a5fcbded7209663d97670496c74dbcd6358ddbe3d9887a0c5f0c4f974bfe1c"
+  },
+  "seed": 42,
+  "tokenizer_type": "hf",
+  "rope_mode": "yarn",
+  "generation": {
+    "temperature": 0.0,
+    "ignore_eos": false
+  },
+  "sparse": {
+    "top_k": 32,
+    "prefill_top_k": 32,
+    "decode_top_k": 32,
+    "dynamic_top_k": false,
+    "index_select": true,
+    "selector_cuda_graph": false,
+    "decode_kv_pipeline": false
+  },
+  "cpu_threads": 8,
+  "job_timeout_seconds": 1200,
+  "datasets": {
+    "8192/niah_single_1": {
+      "path": "/opt/nano-vllm/bench_logs/m22_quality/data/8192/niah_single_1/validation.jsonl",
+      "sha256": "85761dc6134e535ae6f45ec9d1fd1209f506af1b4c8c620fbf580d4cf7286c5f",
+      "samples": 20,
+      "context_tokens": 8192,
+      "task": "niah_single_1",
+      "metric_task": "niah",
+      "max_new_tokens": 128
+    },
+    "8192/niah_multikey_2": {
+      "path": "/opt/nano-vllm/bench_logs/m22_quality/data/8192/niah_multikey_2/validation.jsonl",
+      "sha256": "e5a70c7c8e8c066e3e494df22554649c7c78cae26333e61844c11dee759205db",
+      "samples": 20,
+      "context_tokens": 8192,
+      "task": "niah_multikey_2",
+      "metric_task": "niah",
+      "max_new_tokens": 128
+    },
+    "8192/vt": {
+      "path": "/opt/nano-vllm/bench_logs/m22_quality/data/8192/vt/validation.jsonl",
+      "sha256": "5ebf2ad999345ab8f345ecf784ff0496140a2edec4f8857635bf9288c072848a",
+      "samples": 20,
+      "context_tokens": 8192,
+      "task": "vt",
+      "metric_task": "variable_tracking",
+      "max_new_tokens": 30
+    },
+    "32768/niah_single_1": {
+      "path": "/opt/nano-vllm/bench_logs/m22_quality/data/32768/niah_single_1/validation.jsonl",
+      "sha256": "1ec299bb9ebf828125ad61fcd6010278377f3cce436290bc6f42b9095a083115",
+      "samples": 10,
+      "context_tokens": 32768,
+      "task": "niah_single_1",
+      "metric_task": "niah",
+      "max_new_tokens": 128
+    },
+    "32768/niah_multikey_2": {
+      "path": "/opt/nano-vllm/bench_logs/m22_quality/data/32768/niah_multikey_2/validation.jsonl",
+      "sha256": "88ebd2f97e335fc5d76195f9d3ffc453413c26cf86635432ccacf1dcd1321f77",
+      "samples": 10,
+      "context_tokens": 32768,
+      "task": "niah_multikey_2",
+      "metric_task": "niah",
+      "max_new_tokens": 128
+    }
+  },
+  "arms": {
+    "dense": {
+      "dense": true,
+      "selector_static_mask": false
+    },
+    "sparse_baseline": {
+      "dense": false,
+      "selector_static_mask": false
+    },
+    "m21_static_mask": {
+      "dense": false,
+      "selector_static_mask": true
+    }
+  },
+  "run_identity": "75446a9e9ed019cf930770615ad96f43ac1d4960a3ad9e816ed52d3b68f9a814"
+}

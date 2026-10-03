@@ -1,5 +1,12 @@
 # NanoKV Interview Guide
 
+> Historical M8–M11 guide. The graph-search, Qwen3-0.6B and timing descriptions
+> below are not the final M12–M22 implementation or its current evidence.
+> For interview preparation, start with [project closeout](PROJECT_CLOSEOUT.md),
+> [M21 performance](m21_selector_static_mask_results.md), and
+> [M22 quality evidence](m22_quality_closeout_results.md). The final path uses
+> flat GPU representative scanning; its measured sparse quality is not lossless.
+
 ## 30-second pitch
 
 NanoKV is an educational block-level sparse-attention + CPU-KV-offload

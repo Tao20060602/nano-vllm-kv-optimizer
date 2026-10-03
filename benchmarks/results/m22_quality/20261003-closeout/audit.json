@@ -1,0 +1,25 @@
+{
+  "status": "passed",
+  "scope": "CPU-only artifact audit; not additional model inference",
+  "completed_arms": 13,
+  "unique_prompts": 80,
+  "generations_checked": 220,
+  "task_cap_hits": 220,
+  "sparse_baseline_vs_m21_token_equal_samples": 80,
+  "sparse_baseline_vs_m21_text_equal_samples": 80,
+  "checks": [
+    "all raw predictions and sidecars match public file hashes and path bindings",
+    "all token ID sequences decode exactly to the published prediction text",
+    "all re-encoded prompt lengths and hashes match the per-row evidence",
+    "reference strings occur in the generated task inputs",
+    "official normalization and per-sample/aggregate metrics reproduce exactly",
+    "common recorded core hashes match across all arms and current files",
+    "final summary regenerates exactly and all result paths exist",
+    "nine pinned RULER generation/evaluation files match the local archive"
+  ],
+  "ruler_commit": "c3f5e3b4f87f97e048793bb510a3a6b19a46bf3a",
+  "ruler_archive_sha256": "3d6dd03fc79a145cc05dd1219164535e4618af8b2ad5b325083256254c28acab",
+  "runner_sha256": "0a974b6dbf55280692c546105549ae7c8183b8e42df1f11c445058f01502a0af",
+  "summary_sha256": "14cd286ae829691e226a196da42191d0aa88218bc3d8664d39b16faa4949d1aa",
+  "m12_runtime_sha256": "7509be43c51eb0534b80ea8efefa939f5375dfdba0361536645af54d5a07e6ad"
+}
