@@ -702,7 +702,8 @@ def build_summary(plan: dict[str, Any], plan_hash: str,
                 arm: {
                     "score_percent": result["metric"]["score_percent"],
                     "hit_max_tokens_count": result["hit_max_tokens_count"],
-                    "result_path": str(public_arm_path(Path(plan["results_dir"]), run_id, spec, arm)),
+                    "result_path": str(Path(plan["results_dir"]) /
+                                       f"{spec.context_tokens}_{spec.task_name}_{arm}.json"),
                 } for arm, result in arms.items()
             },
             "core_source_sha256": core_hashes,
