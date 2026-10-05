@@ -2,6 +2,25 @@
 
 This document is the persistent environment contract for NanoKV work. It exists so a new Codex conversation does not rediscover the wrong Windows Python or the wrong WSL distribution.
 
+## Native Linux continuation (planned, not yet verified)
+
+The user plans to resume on native Linux. On the current Windows machine,
+the WSL routing below remains mandatory. On an actual native Linux machine,
+use the user-selected clone and a verified Linux venv directly; do not run
+`wsl.exe`, the PowerShell wrapper, or assume `/opt/nano-vllm` is present.
+
+Read the [operator plan and Linux handoff](SEGMENTED_GQA_PREFILL_PLAN_AND_LINUX_HANDOFF.md)
+before setup changes. Verify and record OS, checkout SHA, GPU/driver, Python,
+PyTorch CUDA runtime, toolkit, Triton, FlashAttention and model paths. The
+table below is the old verified reference, not proof of a new installation.
+Models, HF symlink targets and ignored logs/traces require separate transfer;
+do not copy a venv as the new environment or remove WSL before verification.
+
+Recent system comparisons use Qwen3-4B snapshot
+`1cfa9a7208912126459214e8b04321603b3df60c`; Qwen3-0.6B below remains the
+old environment-check model. Pin the same 4B model for comparable system
+A/B runs. Operator microbenchmarks do not require a model.
+
 ## Source of truth
 
 | Item | Value |

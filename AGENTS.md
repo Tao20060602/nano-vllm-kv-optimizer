@@ -1,6 +1,29 @@
 # NanoKV / nano-vLLM working environment
 
+## Host routing and native Linux continuation
+
+- On the current Windows host, the mandatory WSL rules below remain in force:
+  use `NanoVLLM-Ubuntu:/opt/nano-vllm`, never Windows Python or generic Ubuntu.
+- The user explicitly plans to continue this project on native Linux. On an
+  actual native Linux host, work in the user-selected clone of this repository;
+  do not invoke `wsl.exe` or assume the old absolute paths exist. This is not
+  permission to substitute another runtime while still on Windows.
+- Before native Linux environment changes, read `docs/environment.md` and
+  `docs/SEGMENTED_GQA_PREFILL_PLAN_AND_LINUX_HANDOFF.md`. First verify host,
+  checkout, GPU, Python/venv, dependencies and model locations; report actual
+  paths/versions rather than claiming the old WSL configuration is installed.
+- The native Linux successor has not yet been validated. Do not delete or
+  unregister the old WSL environment as part of setup. Follow the handoff's
+  artifact-preservation and staged operator scope.
+- Qwen3-0.6B below is the old environment-check model. Recent comparative
+  system experiments use the pinned Qwen3-4B snapshot documented in the handoff;
+  do not substitute 0.6B for a 4B A/B result without an explicit change of scope.
+
 ## Authoritative environment
+
+The environment and mandatory routing rules below describe the verified
+Windows/WSL host. On an actual native Linux host, use the host-routing section
+above and verify the selected clone and venv instead of enforcing WSL paths.
 
 - The only authoritative development and runtime environment for this project is WSL distribution `NanoVLLM-Ubuntu`.
 - The authoritative Git worktree is `/opt/nano-vllm` inside that distribution.

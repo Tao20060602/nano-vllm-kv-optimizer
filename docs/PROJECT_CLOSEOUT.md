@@ -5,6 +5,13 @@ and an end to further project development. No additional 64K performance
 experiment is part of this closeout. Future work requires an explicit request
 to reopen the project, for example to reproduce a result for an interview.
 
+Update, 2026-10-05: the user has selected a bounded follow-on operator project,
+documented in the [segmented GQA prefill plan and Linux handoff](SEGMENTED_GQA_PREFILL_PLAN_AND_LINUX_HANDOFF.md).
+Only analysis and documentation have been completed; no new kernel,
+benchmark or native Linux setup is claimed. The M22 baseline and its quality
+limitations remain the completed reference. The follow-on does not reopen
+all previous retrieval/offload/quality optimization directions.
+
 ## Authoritative environment
 
 - WSL distribution: `NanoVLLM-Ubuntu`; repository: `/opt/nano-vllm`.
@@ -53,6 +60,10 @@ K/V of selected blocks plus sink/recent context. The reference setup uses
 
 ## Evidence and navigation
 
+- [Full project history and handoff (Chinese)](NANOKV_PROJECT_HISTORY_AND_HANDOFF.md):
+  M0–M22 decisions, measurements, abandoned candidates, resolved issues,
+  remaining limitations and conditional future directions. Added as a
+  documentation-only retrospective on 2026-10-05; it does not reopen development.
 - [Final quality evidence](m22_quality_closeout_results.md): bounded,
   official-generator RULER-derived matched comparisons, not a full leaderboard.
 - [M18 gather](m18_nsight_gather_results.md), [M19 graph](m19_selector_graph_results.md),

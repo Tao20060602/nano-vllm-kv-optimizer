@@ -36,6 +36,10 @@ Experiment details: [M16](docs/m16_dynamic_topk_results.md),
 [M20](docs/m20_gather_results.md), and
 [M21](docs/m21_selector_static_mask_results.md).
 
+For the full Chinese decision history—from prefix reuse and graph retrieval
+to the final optimizations, failed candidates, quality gaps and handoff—read
+[project history and handoff](docs/NANOKV_PROJECT_HISTORY_AND_HANDOFF.md).
+
 ### Final quality evidence (M22)
 
 The pinned NVIDIA/RULER generators and reference-matching metric were used on
@@ -63,10 +67,20 @@ See the [complete quality report](docs/m22_quality_closeout_results.md),
 [public per-sample evidence](benchmarks/results/m22_quality/20261003-closeout/),
 and [project closeout / reproduction boundaries](docs/PROJECT_CLOSEOUT.md).
 
-**Project status:** closed at the user's request. No further engineering
-experiments are planned; future changes are limited to interview preparation,
-reproduction support, or factual documentation corrections unless the project
-is reopened.
+**Project status:** the M22 system baseline is closed. On 2026-10-05 the user
+selected a bounded follow-on: an independently benchmarked segmented-KV GQA
+prefill operator, with NanoKV integration only if evidence supports it.
+This is a plan, not an implemented kernel or a new acceleration result; the
+existing retrieval/quality limitations remain unchanged.
+
+### Next direction and native Linux handoff (planning only)
+
+Read the [operator plan and Linux handoff](docs/SEGMENTED_GQA_PREFILL_PLAN_AND_LINUX_HANDOFF.md)
+for the source-audited input layout, old Nsight evidence, strong FA2 baselines,
+correctness contract, staged TODOs and stop conditions. The first engineering
+task is a cost baseline, not a full CUDA implementation. Native Linux setup
+has not yet been verified. Models, virtual environments and ignored traces
+do not come with a GitHub clone; preserve them separately before retiring WSL.
 
 ## Attribution and scope
 
@@ -265,9 +279,11 @@ checks do not establish broad quality or production behavior.
 
 ## Roadmap
 
-There is no active engineering roadmap. The project is closed at the user's
-request; only interview-driven explanation, reproduction support, and
-documentation corrections remain in scope unless it is reopened.
+The M22 system baseline remains closed. The user-selected follow-on is the
+[segmented GQA prefill operator plan](docs/SEGMENTED_GQA_PREFILL_PLAN_AND_LINUX_HANDOFF.md),
+starting with a strong-baseline cost study on a verified Linux environment.
+No implementation or new speedup is claimed, and the previous retrieval,
+offload and quality backlogs are not automatically reopened.
 
 ## Repository layout
 
@@ -276,14 +292,14 @@ nanovllm/sparse/       current representative selector and sparse decode path
 nanovllm/kvdb/         retained CPU-backed prefix-reuse implementation
 nanovllm/engine/       llm_engine, scheduler, model_runner, block_manager
 benchmarks/            current sparse experiments and historical M6 drivers
-docs/                  architecture, limitations, M13–M21 evidence reports
+docs/                  architecture, limitations, M13–M22 evidence and decision history
 tests/                 correctness and regression tests
 ```
 ## Historical milestones M8–M11: block-sparse decode + CPU KV offload
 
 This section preserves the early Qwen3-0.6B milestone snapshot. Its timings
 and implementation details are historical; use the M16–M21 reports and the
-pending M22 closeout report for later evidence.
+completed M22 closeout report for later evidence.
 
 M8–M11 extend the engine with block-level sparse attention inspired by AlayaDB
 DIPR/DIPRS. This is a **single-sequence educational prototype**:
