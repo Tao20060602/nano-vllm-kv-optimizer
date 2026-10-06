@@ -1,0 +1,6 @@
+{
+  "check": "previous recent carry for a 96-token tail",
+  "status": "failed",
+  "torch": "2.7.1+cu128",
+  "failure": "unsupported operation: some elements of the input tensor and the written-to tensor refer to a single memory location. Please clone() the tensor before performing the operation."
+}

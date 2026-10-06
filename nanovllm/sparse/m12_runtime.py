@@ -377,8 +377,13 @@ class M12LayerRuntime:
             self.recent_v[:recent_len].copy_(v[-recent_len:])
         else:
             carry = recent_len - T
-            self.recent_k[:carry].copy_(self.recent_k[recent_len - carry:recent_len])
-            self.recent_v[:carry].copy_(self.recent_v[recent_len - carry:recent_len])
+            old_recent_len = min(cfg.recent_tokens, self.valid_len)
+            # The old window is left-aligned and may be shorter than the new
+            # one. Snapshot its suffix before shifting overlapping slices.
+            self.recent_k[:carry].copy_(
+                self.recent_k[old_recent_len - carry:old_recent_len].clone())
+            self.recent_v[:carry].copy_(
+                self.recent_v[old_recent_len - carry:old_recent_len].clone())
             self.recent_k[carry:recent_len].copy_(k)
             self.recent_v[carry:recent_len].copy_(v)
 
