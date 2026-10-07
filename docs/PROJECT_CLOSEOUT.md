@@ -1,18 +1,62 @@
-# NanoKV project closeout
+# NanoKV M22 quality closeout and later work status
 
-The user requested a final quality-evidence pass, publication to GitHub main,
-and an end to further project development. No additional 64K performance
-experiment is part of this closeout. Future work requires an explicit request
-to reopen the project, for example to reproduce a result for an interview.
+## Historical M22 closeout (2026-10-05)
+
+At that point, the user requested a final quality-evidence pass, publication to
+GitHub main, and an end to further project development. No additional 64K
+performance experiment was part of that closeout. The M22 results and quality
+limits below remain the historical record of that decision.
 
 Update, 2026-10-05: the user has selected a bounded follow-on operator project,
 documented in the [segmented GQA prefill plan and Linux handoff](SEGMENTED_GQA_PREFILL_PLAN_AND_LINUX_HANDOFF.md).
-Only analysis and documentation have been completed; no new kernel,
-benchmark or native Linux setup is claimed. The M22 baseline and its quality
-limitations remain the completed reference. The follow-on does not reopen
-all previous retrieval/offload/quality optimization directions.
+This paragraph records the plan as it stood on that date; later implementation
+and measurement status is recorded below.
 
-## Authoritative environment
+## Current status (2026-10-07)
+
+The bounded segmented-prefill operator bridge has been implemented and
+compared in the native checkout. It did not establish a stable full-prefill
+gain, so `sparse_prefill_attention_backend="flash"` remains the default. The
+three-arm fresh-process suite found an operator/reuse geometric-mean ratio of
+0.999172 (0.08% faster, with mixed directions), while operator was 0.60% slower
+than the original `flash` path across all six prompt/group pairs. See the
+[adapter report](NATIVE_SEGMENTED_ADAPTER_REPORT.md) and its
+[paired results](../benchmarks/results/operator_bridge/m19-native/summary.json).
+The report's numeric attention checks passed their existing tolerance, but
+later-layer selector sets differed on the 96-token tail chunk; only the first
+generated token was compared. This is not a model-quality equivalence result.
+
+The separate profiling plan originally called for `flash`, `flash_reuse`, and
+`operator`. After the priority changed, instrumented archive traces were
+captured only for `flash` and `flash_reuse`, at a 4096-token main chunk and a
+96-token tail chunk. The `operator` profiling arm was not run, so the planned
+three-arm profile is incomplete. This is distinct from the completed,
+unprofiled three-arm performance suite above. The two diagnostic outputs are
+local ignored artifacts under
+`bench_logs/operator_bridge/closeout-profile-20261007/`; their instrumented
+timings are not a performance comparison and do not identify a general
+bottleneck. See the [registered profiling plan](NATIVE_ENGINE_CLOSEOUT_PROFILE_PLAN.md).
+
+The user has prioritized the independent operator project. NanoKV engine
+optimization is deferred until that work is complete and is **not closed**.
+When revisited, the goal is to profile the sparse-attention plus CPU-offload
+path, identify the measured prefill or gather bottleneck without assuming one,
+optimize only from that evidence, and then demonstrate a net gain in a matched
+end-to-end benchmark. The next-scope note records this sequence;
+see [deferred engine scope](NATIVE_ENGINE_OPTIMIZATION_NEXT_SCOPE.md). M22's
+historical quality closeout remains intact.
+
+The historical M18 and M21 decode results remain narrow, workload-specific
+results: M18 reported a 14.7% mean paired reduction in steady decode median on
+one repeated 32K prompt; M21 reported 7.40% and 10.46% lower Drop4 mean latency
+in two 32K pairs. They are not prefill results and must not be combined or
+extrapolated.
+
+## Environment snapshot for the M22 closeout
+
+The following WSL values describe the earlier M22 environment, not the current
+native checkout. Current native paths and verification are recorded in
+[environment.md](environment.md).
 
 - WSL distribution: `NanoVLLM-Ubuntu`; repository: `/opt/nano-vllm`.
 - Python: `/opt/nano-vllm/.venv/bin/python`; CUDA: `/usr/local/cuda-12.8`.
@@ -76,7 +120,7 @@ K/V of selected blocks plus sink/recent context. The reference setup uses
 - Full local predictions, generated prompts, logs and large Nsight files:
   ignored `bench_logs/`. Do not upload model weights or the whole WSL disk.
 
-## Reopening boundaries
+## M22-era reopening boundaries (historical snapshot)
 
 Final verification: all 13 quality arms completed; the CPU artifact audit
 checked all 220 generations and reproduced all official scores. The focused
@@ -88,6 +132,7 @@ no background project monitor or follow-on optimization is scheduled.
 128K execution is not evidence of broad 128K quality. Batch/concurrency
 throughput, long decode beyond the recent window, wide model-family coverage
 and production serving are not established by this project. Do not silently
-promote experimental flags or restart an optimization roadmap. First identify
-the interviewer's concrete requirement, choose a narrow reproducible test,
-and get authorization for any new work or paid compute.
+promote experimental flags. Those boundaries applied to the M22 closeout; the
+later operator project and deferred engine scope above record the user's
+subsequent direction. Any future engine implementation should be scoped after
+the operator project is complete.

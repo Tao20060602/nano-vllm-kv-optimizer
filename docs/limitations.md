@@ -1,6 +1,9 @@
 # Current limitations and evidence boundary
 
-This document describes the M12–M22 sparse-decode path as of 2026-10-03.
+This document describes the M12–M22 sparse-decode baseline and the bounded
+segmented-prefill bridge measured on 2026-10-07. The NanoKV engine optimization
+follow-up is deferred and is not complete; its next-stage objective is recorded
+in [NATIVE_ENGINE_OPTIMIZATION_NEXT_SCOPE.md](NATIVE_ENGINE_OPTIMIZATION_NEXT_SCOPE.md).
 Earlier M0–M6 CPUBlockStore caveats are separated at the end because that
 prefix-reuse path and its measurements do not describe the current Qwen3-4B
 configuration.
@@ -47,6 +50,7 @@ opt-in:
 | Selector CUDA graph (M19) | Off | Three corrected fresh-process pairs had mixed timing directions. A faster same-process interleaved run is not enough to change the default. |
 | K/V copy pipeline (M20) | Off | The latest ABBA and two fresh-process comparisons showed no acceleration. These observations do not prove the pipeline causes a slowdown. |
 | Adaptive decode Top-K or reduced prefill Top-K (M16–M17) | Off | Adaptive decode did not show a TPOT gain. In a small matched multi-key screen, prefill K=32 scored 1/3 while K=24 and K=16 each scored 0/3; lower prefill budgets therefore remain experimental. |
+| Segmented GQA prefill bridge (2026-10-07) | Experimental backends opt-in; `flash` remains default | The three-arm suite found no stable end-to-end prefill gain. Operator versus `flash_reuse` geometric mean was 0.999172 (0.08% faster, mixed directions); versus original `flash` it was 1.005987 (0.60% slower across all six pairs). This is not decode or TPOT evidence. |
 
 The M18 gather measurements concern decode on one prompt and do not establish
 a prefill speedup. Nsight ranges, shape-derived transfer estimates, and
@@ -56,6 +60,38 @@ latency or hardware-counter evidence. Detailed methods and evidence are in the
 [M18](m18_nsight_gather_results.md), [M19](m19_selector_graph_results.md),
 [M20](m20_gather_results.md), and
 [M21](m21_selector_static_mask_results.md) reports.
+
+The narrow historical decode results remain separate: M18's direct pinned
+gather reported a 14.7% mean paired reduction in steady decode median across
+three pairs on one repeated 32K prompt; M21's optional static mask reported
+7.40% and 10.46% lower Drop4 mean latency in two 32K pairs. These do not predict
+prefill performance or generalize beyond those tested workloads.
+
+### Segmented prefill results and partial profiling status (2026-10-07)
+
+The native segmented adapter report covers two fixed 16,480-token prompts,
+three fresh-process groups, and only the first generated token. The comparison
+supports retaining the existing `flash` default. Attention outputs passed the
+existing numeric tolerance, but subsequent selector sets differed in layers
+after the 96-token tail chunk. The experiment did not establish model-quality
+equivalence or a decode TPOT effect. See
+[NATIVE_SEGMENTED_ADAPTER_REPORT.md](NATIVE_SEGMENTED_ADAPTER_REPORT.md) and
+the [paired result summary](../benchmarks/results/operator_bridge/m19-native/summary.json).
+
+The registered profiling plan specified all three backends. Following the
+priority change, only `flash` and `flash_reuse` were profiled, for one archive
+prompt at a 4096-token main chunk and a 96-token tail chunk. The `operator`
+profile was not run, so these captures are not a complete three-arm profiling
+comparison. The instrumented traces are local ignored artifacts under
+`bench_logs/operator_bridge/closeout-profile-20261007/`; they are diagnostics,
+not clean timing results. They do not establish that CPU gather, prefill, or
+any other stage is the system bottleneck. The engine follow-up is deferred
+until the independent operator project is complete; its first step is to
+measure the actual critical path, not to assume a gather limitation.
+
+The old NanoKV milestone M19 denotes selector CUDA graph. The segmented
+operator bridge is a separate effort and should be referred to by that name
+and date, not as NanoKV M19.
 
 ## Correctness fixes already incorporated
 
