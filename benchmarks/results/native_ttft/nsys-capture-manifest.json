@@ -1,0 +1,74 @@
+{
+  "schema": 1,
+  "status": "passed",
+  "scope": "separate instrumented profile; single archive-T16480 step3 (4096 current tokens after 12288 history tokens); not performance acceptance",
+  "nsys_path": "/home/tmz/ai/profilers/nsight-systems-2026.5.1/opt/nvidia/nsight-systems-cli/2026.5.1/bin/nsys",
+  "nsys_version": "NVIDIA Nsight Systems version 2026.5.1.161-265138896106v0",
+  "nsys_executable_sha256": "ccc5904771ce1cdbcd96a9ce29f75a0d6cbaa4e08d47a3439232afe387f5a6fd",
+  "capture_options": [
+    "--trace=cuda,nvtx,osrt",
+    "--capture-range=cudaProfilerApi",
+    "--capture-range-end=stop",
+    "--sample=none",
+    "--cpuctxsw=none",
+    "--export=sqlite"
+  ],
+  "wrapper_sha256": "3fe718f1ea280aa4ce742dc3c80e61b9f82909bcdaf28b98ba2ea5420bc68608",
+  "artifacts": [
+    {
+      "arm": "baseline",
+      "worker_status": "passed",
+      "first_token_id": 2797,
+      "files": [
+        {
+          "path": "bench_logs/m23-nsys/baseline.nsys-rep",
+          "sha256": "fd1e8c6b3bfcfe17f08dbb98526e6a306c3f031f00037de535178ac17cbb211d",
+          "bytes": 410440
+        },
+        {
+          "path": "bench_logs/m23-nsys/baseline.sqlite",
+          "sha256": "286fdb1adb6cb57e663036e58261b3a58eb66f9b94b79c272501b714599fa2bc",
+          "bytes": 1212416
+        },
+        {
+          "path": "bench_logs/m23-nsys/baseline-worker.json",
+          "sha256": "9f2123ab25c0acfd0b403ee9437db3305b352d81d094e7ed91a3ebc090440e1c",
+          "bytes": 46384
+        },
+        {
+          "path": "bench_logs/m23-nsys/baseline.log",
+          "sha256": "405c2a6072b255efa521208cc947962a625f27198c40fcd8a2486ac253e29741",
+          "bytes": 6976
+        }
+      ]
+    },
+    {
+      "arm": "direct_store",
+      "worker_status": "passed",
+      "first_token_id": 2797,
+      "files": [
+        {
+          "path": "bench_logs/m23-nsys/direct_store.nsys-rep",
+          "sha256": "4272e7ec156c671f63a2fc7dd3c3a3779272649d2045ce27e81c1a3f1900d6f2",
+          "bytes": 412222
+        },
+        {
+          "path": "bench_logs/m23-nsys/direct_store.sqlite",
+          "sha256": "081e453e5c9c4a5ce177e922c3d2bf2d06b95767833e384b5dd66f3c149e229d",
+          "bytes": 1212416
+        },
+        {
+          "path": "bench_logs/m23-nsys/direct_store-worker.json",
+          "sha256": "4a678e93d31ca6855a9b075b1df7c7e2291021da860bf54da2c7e78ecfdc638a",
+          "bytes": 46744
+        },
+        {
+          "path": "bench_logs/m23-nsys/direct_store.log",
+          "sha256": "256b119da2f82e6814b5fe74e4d5ca8c8fa6756f00881b1aa47b22999a7ce0b6",
+          "bytes": 7378
+        }
+      ]
+    }
+  ],
+  "privacy": "raw profiler reports can contain process environment metadata; remain local ignored artifacts; this manifest contains only file hashes and declared capture options"
+}

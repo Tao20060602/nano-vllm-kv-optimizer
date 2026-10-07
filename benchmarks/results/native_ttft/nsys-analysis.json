@@ -1,0 +1,2031 @@
+{
+  "schema": 1,
+  "status": "passed",
+  "analysis_mode": "CPU-only read-only Nsight SQLite, CUDA/NVTX whitelist; no GPU workload",
+  "source_hashes": {
+    "benchmarks/analyze_native_ttft_nsys.py": "893625598f953197c2969a8ffc8f14769cb56e03adbc32a66e50d9b7ee99e7cd",
+    "benchmarks/profile_native_ttft_nsys.py": "3fe718f1ea280aa4ce742dc3c80e61b9f82909bcdaf28b98ba2ea5420bc68608",
+    "benchmarks/benchmark_native_ttft.py": "91bf9bcb950cf2a7d3ed90f35ba501f606ae454f39b74bda293c3318c0d9f570",
+    "benchmarks/native_ttft_candidate.py": "160ae0238f6df1f197bf5bcc497eafa0269644d18e67530e5923ac453250410e"
+  },
+  "baseline": {
+    "path": "/home/tmz/.codex/worktrees/nanokv-native-linux/nanokv/bench_logs/m23-nsys/baseline.sqlite",
+    "sha256": "286fdb1adb6cb57e663036e58261b3a58eb66f9b94b79c272501b714599fa2bc",
+    "schema": {
+      "NVTX_EVENTS": [
+        "start",
+        "end",
+        "eventType",
+        "rangeId",
+        "category",
+        "color",
+        "text",
+        "globalTid",
+        "endGlobalTid",
+        "textId",
+        "domainId",
+        "uint64Value",
+        "int64Value",
+        "doubleValue",
+        "uint32Value",
+        "int32Value",
+        "floatValue",
+        "jsonTextId",
+        "jsonText",
+        "binaryData",
+        "eventId"
+      ],
+      "CUPTI_ACTIVITY_KIND_RUNTIME": [
+        "start",
+        "end",
+        "eventClass",
+        "globalTid",
+        "correlationId",
+        "nameId",
+        "returnValue",
+        "callchainId"
+      ],
+      "CUPTI_ACTIVITY_KIND_MEMCPY": [
+        "start",
+        "end",
+        "deviceId",
+        "contextId",
+        "greenContextId",
+        "streamId",
+        "correlationId",
+        "globalPid",
+        "bytes",
+        "copyKind",
+        "deprecatedSrcId",
+        "srcKind",
+        "dstKind",
+        "srcDeviceId",
+        "srcContextId",
+        "dstDeviceId",
+        "dstContextId",
+        "migrationCause",
+        "graphNodeId",
+        "virtualAddress",
+        "copyCount"
+      ],
+      "CUPTI_ACTIVITY_KIND_KERNEL": [
+        "start",
+        "end",
+        "deviceId",
+        "contextId",
+        "greenContextId",
+        "streamId",
+        "correlationId",
+        "globalPid",
+        "demangledName",
+        "shortName",
+        "mangledName",
+        "launchType",
+        "cacheConfig",
+        "registersPerThread",
+        "gridX",
+        "gridY",
+        "gridZ",
+        "blockX",
+        "blockY",
+        "blockZ",
+        "staticSharedMemory",
+        "dynamicSharedMemory",
+        "localMemoryPerThread",
+        "localMemoryTotal",
+        "gridId",
+        "sharedMemoryExecuted",
+        "graphNodeId",
+        "sharedMemoryLimitConfig",
+        "qmdBulkReleaseDone",
+        "qmdPreexitDone",
+        "qmdLastCtaDone",
+        "graphId",
+        "clusterX",
+        "clusterY",
+        "clusterZ",
+        "clusterSchedulingPolicy",
+        "maxPotentialClusterSize",
+        "maxActiveClusters",
+        "sharedMemoryRequestedPercentage",
+        "tensorSizeMinusOneElements"
+      ],
+      "ENUM_CUDA_MEMCPY_OPER": [
+        "id",
+        "name",
+        "label"
+      ],
+      "ENUM_CUDA_MEM_KIND": [
+        "id",
+        "name",
+        "label"
+      ]
+    },
+    "step_cpu_ms": 1529.901713,
+    "annotation_count": 288,
+    "stages": {
+      "m12.prefill_selector": {
+        "layer_count": 36,
+        "cpu_inclusive_sum_ms": 767.704018,
+        "cpu_interval_union_ms": 767.704018,
+        "cuda_host_api_union_ms": 740.952821,
+        "host_time_outside_contained_cuda_api_ms": 26.751197,
+        "cuda_host_api": [
+          {
+            "name": "cudaStreamSynchronize_v3020",
+            "count": 144,
+            "duration_sum_ms": 733.111569,
+            "interval_union_ms": 733.111569,
+            "bytes": 0
+          },
+          {
+            "name": "cudaLaunchKernel_v7000",
+            "count": 576,
+            "duration_sum_ms": 5.060668,
+            "interval_union_ms": 5.060668,
+            "bytes": 0
+          },
+          {
+            "name": "cudaMemcpyAsync_v3020",
+            "count": 144,
+            "duration_sum_ms": 2.204384,
+            "interval_union_ms": 2.204384,
+            "bytes": 0
+          },
+          {
+            "name": "cudaMemsetAsync_v3020",
+            "count": 36,
+            "duration_sum_ms": 0.572861,
+            "interval_union_ms": 0.572861,
+            "bytes": 0
+          },
+          {
+            "name": "cudaEventQuery_v3020",
+            "count": 1,
+            "duration_sum_ms": 0.003339,
+            "interval_union_ms": 0.003339,
+            "bytes": 0
+          }
+        ],
+        "submitted_gpu_copies": [
+          {
+            "name": "Device-to-Host",
+            "count": 72,
+            "duration_sum_ms": 0.097472,
+            "interval_union_ms": 0.097472,
+            "bytes": 9360
+          },
+          {
+            "name": "Host-to-Device",
+            "count": 72,
+            "duration_sum_ms": 0.027584,
+            "interval_union_ms": 0.027584,
+            "bytes": 2736
+          }
+        ],
+        "submitted_gpu_kernels": [
+          {
+            "name": "reduce_kernel",
+            "count": 180,
+            "duration_sum_ms": 3.792012,
+            "interval_union_ms": 3.792012,
+            "bytes": 0
+          },
+          {
+            "name": "elementwise_kernel",
+            "count": 36,
+            "duration_sum_ms": 0.422596,
+            "interval_union_ms": 0.422596,
+            "bytes": 0
+          },
+          {
+            "name": "gemmSN_TN_kernel",
+            "count": 36,
+            "duration_sum_ms": 0.332548,
+            "interval_union_ms": 0.332548,
+            "bytes": 0
+          },
+          {
+            "name": "gatherTopK",
+            "count": 36,
+            "duration_sum_ms": 0.249153,
+            "interval_union_ms": 0.249153,
+            "bytes": 0
+          },
+          {
+            "name": "index_elementwise_kernel",
+            "count": 72,
+            "duration_sum_ms": 0.20496,
+            "interval_union_ms": 0.20496,
+            "bytes": 0
+          },
+          {
+            "name": "bitonicSortKVInPlace",
+            "count": 36,
+            "duration_sum_ms": 0.180129,
+            "interval_union_ms": 0.180129,
+            "bytes": 0
+          },
+          {
+            "name": "unrolled_elementwise_kernel",
+            "count": 36,
+            "duration_sum_ms": 0.120547,
+            "interval_union_ms": 0.120547,
+            "bytes": 0
+          },
+          {
+            "name": "DeviceSelectSweepKernel",
+            "count": 36,
+            "duration_sum_ms": 0.066081,
+            "interval_union_ms": 0.066081,
+            "bytes": 0
+          },
+          {
+            "name": "vectorized_elementwise_kernel",
+            "count": 36,
+            "duration_sum_ms": 0.057952,
+            "interval_union_ms": 0.057952,
+            "bytes": 0
+          },
+          {
+            "name": "DeviceReduceSingleTileKernel",
+            "count": 36,
+            "duration_sum_ms": 0.05677,
+            "interval_union_ms": 0.05677,
+            "bytes": 0
+          },
+          {
+            "name": "DeviceCompactInitKernel",
+            "count": 36,
+            "duration_sum_ms": 0.037856,
+            "interval_union_ms": 0.037856,
+            "bytes": 0
+          }
+        ],
+        "temporal_gpu_overlap_ms": 749.356159,
+        "temporal_flash_kernel_overlap_ms": 0.0,
+        "temporal_gemm_kernel_overlap_ms": 325.530468
+      },
+      "m12.prefill_cpu_gather": {
+        "layer_count": 36,
+        "cpu_inclusive_sum_ms": 30.500614,
+        "cpu_interval_union_ms": 30.500614,
+        "cuda_host_api_union_ms": 0.0,
+        "host_time_outside_contained_cuda_api_ms": 30.500614,
+        "cuda_host_api": [],
+        "submitted_gpu_copies": [],
+        "submitted_gpu_kernels": [],
+        "temporal_gpu_overlap_ms": 0.0,
+        "temporal_flash_kernel_overlap_ms": 0.0,
+        "temporal_gemm_kernel_overlap_ms": 0.0
+      },
+      "m12.prefill_h2d_pack": {
+        "layer_count": 36,
+        "cpu_inclusive_sum_ms": 61.100896,
+        "cpu_interval_union_ms": 61.100896,
+        "cuda_host_api_union_ms": 51.223685,
+        "host_time_outside_contained_cuda_api_ms": 9.877211,
+        "cuda_host_api": [
+          {
+            "name": "cudaStreamSynchronize_v3020",
+            "count": 72,
+            "duration_sum_ms": 46.888031,
+            "interval_union_ms": 46.888031,
+            "bytes": 0
+          },
+          {
+            "name": "cudaMemcpyAsync_v3020",
+            "count": 324,
+            "duration_sum_ms": 3.881192,
+            "interval_union_ms": 3.881192,
+            "bytes": 0
+          },
+          {
+            "name": "cudaLaunchKernel_v7000",
+            "count": 36,
+            "duration_sum_ms": 0.454462,
+            "interval_union_ms": 0.454462,
+            "bytes": 0
+          }
+        ],
+        "submitted_gpu_copies": [
+          {
+            "name": "Host-to-Device",
+            "count": 72,
+            "duration_sum_ms": 46.620119,
+            "interval_union_ms": 46.620119,
+            "bytes": 301989888
+          },
+          {
+            "name": "Device-to-Device",
+            "count": 252,
+            "duration_sum_ms": 3.573553,
+            "interval_union_ms": 3.573553,
+            "bytes": 688914432
+          }
+        ],
+        "submitted_gpu_kernels": [
+          {
+            "name": "elementwise_kernel",
+            "count": 36,
+            "duration_sum_ms": 1.605839,
+            "interval_union_ms": 1.605839,
+            "bytes": 0
+          }
+        ],
+        "temporal_gpu_overlap_ms": 49.971821,
+        "temporal_flash_kernel_overlap_ms": 0.0,
+        "temporal_gemm_kernel_overlap_ms": 0.0
+      },
+      "m12.prefill_attention": {
+        "layer_count": 36,
+        "cpu_inclusive_sum_ms": 11.660346,
+        "cpu_interval_union_ms": 11.660346,
+        "cuda_host_api_union_ms": 0.495629,
+        "host_time_outside_contained_cuda_api_ms": 11.164717,
+        "cuda_host_api": [
+          {
+            "name": "cudaLaunchKernel_v7000",
+            "count": 36,
+            "duration_sum_ms": 0.495629,
+            "interval_union_ms": 0.495629,
+            "bytes": 0
+          }
+        ],
+        "submitted_gpu_copies": [],
+        "submitted_gpu_kernels": [
+          {
+            "name": "flash_fwd_kernel",
+            "count": 36,
+            "duration_sum_ms": 321.920207,
+            "interval_union_ms": 321.920207,
+            "bytes": 0
+          }
+        ],
+        "temporal_gpu_overlap_ms": 5.130102,
+        "temporal_flash_kernel_overlap_ms": 3.671468,
+        "temporal_gemm_kernel_overlap_ms": 0.0
+      },
+      "m12.prefill_store_kv": {
+        "layer_count": 36,
+        "cpu_inclusive_sum_ms": 567.935421,
+        "cpu_interval_union_ms": 567.935421,
+        "cuda_host_api_union_ms": 452.811488,
+        "host_time_outside_contained_cuda_api_ms": 115.123933,
+        "cuda_host_api": [
+          {
+            "name": "cudaMemcpyAsync_v3020",
+            "count": 108,
+            "duration_sum_ms": 438.970119,
+            "interval_union_ms": 438.970119,
+            "bytes": 0
+          },
+          {
+            "name": "cudaLaunchKernel_v7000",
+            "count": 1584,
+            "duration_sum_ms": 13.314747,
+            "interval_union_ms": 13.314747,
+            "bytes": 0
+          },
+          {
+            "name": "cudaStreamSynchronize_v3020",
+            "count": 72,
+            "duration_sum_ms": 0.526622,
+            "interval_union_ms": 0.526622,
+            "bytes": 0
+          }
+        ],
+        "submitted_gpu_copies": [
+          {
+            "name": "Device-to-Host",
+            "count": 72,
+            "duration_sum_ms": 112.392823,
+            "interval_union_ms": 112.392823,
+            "bytes": 603979776
+          },
+          {
+            "name": "Device-to-Device",
+            "count": 36,
+            "duration_sum_ms": 0.207906,
+            "interval_union_ms": 0.207906,
+            "bytes": 37748736
+          }
+        ],
+        "submitted_gpu_kernels": [
+          {
+            "name": "elementwise_kernel",
+            "count": 468,
+            "duration_sum_ms": 16.455894,
+            "interval_union_ms": 16.455894,
+            "bytes": 0
+          },
+          {
+            "name": "ampere_sgemm_128x128_tn",
+            "count": 72,
+            "duration_sum_ms": 14.67001,
+            "interval_union_ms": 14.67001,
+            "bytes": 0
+          },
+          {
+            "name": "reduce_kernel",
+            "count": 360,
+            "duration_sum_ms": 5.605628,
+            "interval_union_ms": 5.605628,
+            "bytes": 0
+          },
+          {
+            "name": "gemv2T_kernel_val",
+            "count": 72,
+            "duration_sum_ms": 3.412673,
+            "interval_union_ms": 3.412673,
+            "bytes": 0
+          },
+          {
+            "name": "unrolled_elementwise_kernel",
+            "count": 36,
+            "duration_sum_ms": 2.303802,
+            "interval_union_ms": 2.303802,
+            "bytes": 0
+          },
+          {
+            "name": "_scatter_gather_elementwise_kernel",
+            "count": 252,
+            "duration_sum_ms": 1.609235,
+            "interval_union_ms": 1.609235,
+            "bytes": 0
+          },
+          {
+            "name": "vectorized_elementwise_kernel",
+            "count": 324,
+            "duration_sum_ms": 0.550537,
+            "interval_union_ms": 0.550537,
+            "bytes": 0
+          }
+        ],
+        "temporal_gpu_overlap_ms": 475.176636,
+        "temporal_flash_kernel_overlap_ms": 317.968128,
+        "temporal_gemm_kernel_overlap_ms": 14.67001
+      },
+      "m23.store_k_copy": {
+        "layer_count": 36,
+        "cpu_inclusive_sum_ms": 401.837824,
+        "cpu_interval_union_ms": 401.837824,
+        "cuda_host_api_union_ms": 377.240318,
+        "host_time_outside_contained_cuda_api_ms": 24.597506,
+        "cuda_host_api": [
+          {
+            "name": "cudaMemcpyAsync_v3020",
+            "count": 36,
+            "duration_sum_ms": 376.935594,
+            "interval_union_ms": 376.935594,
+            "bytes": 0
+          },
+          {
+            "name": "cudaStreamSynchronize_v3020",
+            "count": 36,
+            "duration_sum_ms": 0.304724,
+            "interval_union_ms": 0.304724,
+            "bytes": 0
+          }
+        ],
+        "submitted_gpu_copies": [
+          {
+            "name": "Device-to-Host",
+            "count": 36,
+            "duration_sum_ms": 56.593407,
+            "interval_union_ms": 56.593407,
+            "bytes": 301989888
+          }
+        ],
+        "submitted_gpu_kernels": [],
+        "temporal_gpu_overlap_ms": 373.706352,
+        "temporal_flash_kernel_overlap_ms": 317.112945,
+        "temporal_gemm_kernel_overlap_ms": 0.0
+      },
+      "m23.store_v_copy": {
+        "layer_count": 36,
+        "cpu_inclusive_sum_ms": 91.043472,
+        "cpu_interval_union_ms": 91.043472,
+        "cuda_host_api_union_ms": 62.434311,
+        "host_time_outside_contained_cuda_api_ms": 28.609161,
+        "cuda_host_api": [
+          {
+            "name": "cudaMemcpyAsync_v3020",
+            "count": 36,
+            "duration_sum_ms": 61.169637,
+            "interval_union_ms": 61.169637,
+            "bytes": 0
+          },
+          {
+            "name": "cudaLaunchKernel_v7000",
+            "count": 36,
+            "duration_sum_ms": 1.042776,
+            "interval_union_ms": 1.042776,
+            "bytes": 0
+          },
+          {
+            "name": "cudaStreamSynchronize_v3020",
+            "count": 36,
+            "duration_sum_ms": 0.221898,
+            "interval_union_ms": 0.221898,
+            "bytes": 0
+          }
+        ],
+        "submitted_gpu_copies": [
+          {
+            "name": "Device-to-Host",
+            "count": 36,
+            "duration_sum_ms": 55.799416,
+            "interval_union_ms": 55.799416,
+            "bytes": 301989888
+          }
+        ],
+        "submitted_gpu_kernels": [
+          {
+            "name": "elementwise_kernel",
+            "count": 36,
+            "duration_sum_ms": 1.515157,
+            "interval_union_ms": 1.515157,
+            "bytes": 0
+          }
+        ],
+        "temporal_gpu_overlap_ms": 57.314573,
+        "temporal_flash_kernel_overlap_ms": 0.0,
+        "temporal_gemm_kernel_overlap_ms": 0.0
+      },
+      "m23.build_representatives": {
+        "layer_count": 36,
+        "cpu_inclusive_sum_ms": 69.231635,
+        "cpu_interval_union_ms": 69.231635,
+        "cuda_host_api_union_ms": 12.030547,
+        "host_time_outside_contained_cuda_api_ms": 57.201088,
+        "cuda_host_api": [
+          {
+            "name": "cudaLaunchKernel_v7000",
+            "count": 1512,
+            "duration_sum_ms": 12.030547,
+            "interval_union_ms": 12.030547,
+            "bytes": 0
+          }
+        ],
+        "submitted_gpu_copies": [],
+        "submitted_gpu_kernels": [
+          {
+            "name": "elementwise_kernel",
+            "count": 396,
+            "duration_sum_ms": 14.672864,
+            "interval_union_ms": 14.672864,
+            "bytes": 0
+          },
+          {
+            "name": "ampere_sgemm_128x128_tn",
+            "count": 72,
+            "duration_sum_ms": 14.67001,
+            "interval_union_ms": 14.67001,
+            "bytes": 0
+          },
+          {
+            "name": "reduce_kernel",
+            "count": 360,
+            "duration_sum_ms": 5.605628,
+            "interval_union_ms": 5.605628,
+            "bytes": 0
+          },
+          {
+            "name": "gemv2T_kernel_val",
+            "count": 72,
+            "duration_sum_ms": 3.412673,
+            "interval_union_ms": 3.412673,
+            "bytes": 0
+          },
+          {
+            "name": "unrolled_elementwise_kernel",
+            "count": 36,
+            "duration_sum_ms": 2.303802,
+            "interval_union_ms": 2.303802,
+            "bytes": 0
+          },
+          {
+            "name": "_scatter_gather_elementwise_kernel",
+            "count": 252,
+            "duration_sum_ms": 1.609235,
+            "interval_union_ms": 1.609235,
+            "bytes": 0
+          },
+          {
+            "name": "vectorized_elementwise_kernel",
+            "count": 324,
+            "duration_sum_ms": 0.550537,
+            "interval_union_ms": 0.550537,
+            "bytes": 0
+          }
+        ],
+        "temporal_gpu_overlap_ms": 42.714068,
+        "temporal_flash_kernel_overlap_ms": 0.0,
+        "temporal_gemm_kernel_overlap_ms": 14.67001
+      }
+    },
+    "cuda_host_api": [
+      {
+        "name": "cudaStreamSynchronize_v3020",
+        "count": 290,
+        "duration_sum_ms": 800.432269,
+        "interval_union_ms": 800.432269,
+        "bytes": 0
+      },
+      {
+        "name": "cudaMemcpyAsync_v3020",
+        "count": 583,
+        "duration_sum_ms": 445.15662,
+        "interval_union_ms": 445.15662,
+        "bytes": 0
+      },
+      {
+        "name": "cudaLaunchKernel_v7000",
+        "count": 2345,
+        "duration_sum_ms": 20.631786,
+        "interval_union_ms": 20.631786,
+        "bytes": 0
+      },
+      {
+        "name": "cuLaunchKernel",
+        "count": 291,
+        "duration_sum_ms": 3.114285,
+        "interval_union_ms": 3.114285,
+        "bytes": 0
+      },
+      {
+        "name": "cudaMemsetAsync_v3020",
+        "count": 36,
+        "duration_sum_ms": 0.572861,
+        "interval_union_ms": 0.572861,
+        "bytes": 0
+      },
+      {
+        "name": "cuKernelGetFunction",
+        "count": 36,
+        "duration_sum_ms": 0.125883,
+        "interval_union_ms": 0.125883,
+        "bytes": 0
+      },
+      {
+        "name": "cudaEventRecord_v3020",
+        "count": 5,
+        "duration_sum_ms": 0.025959,
+        "interval_union_ms": 0.025959,
+        "bytes": 0
+      },
+      {
+        "name": "cudaEventQuery_v3020",
+        "count": 5,
+        "duration_sum_ms": 0.014009,
+        "interval_union_ms": 0.014009,
+        "bytes": 0
+      },
+      {
+        "name": "cuProfilerStart",
+        "count": 1,
+        "duration_sum_ms": 0.008595,
+        "interval_union_ms": 0.008595,
+        "bytes": 0
+      },
+      {
+        "name": "cudaDeviceSynchronize_v3020",
+        "count": 1,
+        "duration_sum_ms": 0.00424,
+        "interval_union_ms": 0.00424,
+        "bytes": 0
+      }
+    ],
+    "gpu_copies": [
+      {
+        "name": "Device-to-Host",
+        "count": 146,
+        "duration_sum_ms": 112.493047,
+        "interval_union_ms": 112.493047,
+        "bytes": 603989145
+      },
+      {
+        "name": "Host-to-Device",
+        "count": 149,
+        "duration_sum_ms": 46.660311,
+        "interval_union_ms": 46.660311,
+        "bytes": 302058180
+      },
+      {
+        "name": "Device-to-Device",
+        "count": 288,
+        "duration_sum_ms": 3.781459,
+        "interval_union_ms": 3.781459,
+        "bytes": 726663168
+      }
+    ],
+    "gpu_kernels": [
+      {
+        "name": "ampere_bf16_s16816gemm_bf16_25_2...",
+        "count": 108,
+        "duration_sum_ms": 392.854437,
+        "interval_union_ms": 392.854437,
+        "bytes": 0
+      },
+      {
+        "name": "Kernel2",
+        "count": 36,
+        "duration_sum_ms": 379.740825,
+        "interval_union_ms": 379.740825,
+        "bytes": 0
+      },
+      {
+        "name": "flash_fwd_kernel",
+        "count": 36,
+        "duration_sum_ms": 321.920207,
+        "interval_union_ms": 321.920207,
+        "bytes": 0
+      },
+      {
+        "name": "triton_red_fused__to_copy_add__1...",
+        "count": 145,
+        "duration_sum_ms": 22.205582,
+        "interval_union_ms": 22.205582,
+        "bytes": 0
+      },
+      {
+        "name": "triton_poi_fused_mul_silu_0",
+        "count": 36,
+        "duration_sum_ms": 20.57968,
+        "interval_union_ms": 20.57968,
+        "bytes": 0
+      },
+      {
+        "name": "elementwise_kernel",
+        "count": 540,
+        "duration_sum_ms": 18.484329,
+        "interval_union_ms": 18.484329,
+        "bytes": 0
+      },
+      {
+        "name": "ampere_sgemm_128x128_tn",
+        "count": 72,
+        "duration_sum_ms": 14.67001,
+        "interval_union_ms": 14.67001,
+        "bytes": 0
+      },
+      {
+        "name": "reduce_kernel",
+        "count": 540,
+        "duration_sum_ms": 9.39764,
+        "interval_union_ms": 9.39764,
+        "bytes": 0
+      },
+      {
+        "name": "triton_poi_fused__to_copy_cat__3...",
+        "count": 36,
+        "duration_sum_ms": 6.028867,
+        "interval_union_ms": 6.028867,
+        "bytes": 0
+      },
+      {
+        "name": "gemv2T_kernel_val",
+        "count": 73,
+        "duration_sum_ms": 5.211061,
+        "interval_union_ms": 5.211061,
+        "bytes": 0
+      },
+      {
+        "name": "unrolled_elementwise_kernel",
+        "count": 74,
+        "duration_sum_ms": 2.428381,
+        "interval_union_ms": 2.428381,
+        "bytes": 0
+      },
+      {
+        "name": "triton_poi_fused__to_copy_cat__4...",
+        "count": 36,
+        "duration_sum_ms": 1.70779,
+        "interval_union_ms": 1.70779,
+        "bytes": 0
+      },
+      {
+        "name": "_scatter_gather_elementwise_kernel",
+        "count": 252,
+        "duration_sum_ms": 1.609235,
+        "interval_union_ms": 1.609235,
+        "bytes": 0
+      },
+      {
+        "name": "vectorized_elementwise_kernel",
+        "count": 360,
+        "duration_sum_ms": 0.608489,
+        "interval_union_ms": 0.608489,
+        "bytes": 0
+      },
+      {
+        "name": "gemmSN_TN_kernel",
+        "count": 36,
+        "duration_sum_ms": 0.332548,
+        "interval_union_ms": 0.332548,
+        "bytes": 0
+      },
+      {
+        "name": "gatherTopK",
+        "count": 36,
+        "duration_sum_ms": 0.249153,
+        "interval_union_ms": 0.249153,
+        "bytes": 0
+      },
+      {
+        "name": "index_elementwise_kernel",
+        "count": 73,
+        "duration_sum_ms": 0.20928,
+        "interval_union_ms": 0.20928,
+        "bytes": 0
+      },
+      {
+        "name": "bitonicSortKVInPlace",
+        "count": 36,
+        "duration_sum_ms": 0.180129,
+        "interval_union_ms": 0.180129,
+        "bytes": 0
+      },
+      {
+        "name": "indexSelectLargeIndex",
+        "count": 1,
+        "duration_sum_ms": 0.176738,
+        "interval_union_ms": 0.176738,
+        "bytes": 0
+      },
+      {
+        "name": "DeviceSelectSweepKernel",
+        "count": 36,
+        "duration_sum_ms": 0.066081,
+        "interval_union_ms": 0.066081,
+        "bytes": 0
+      },
+      {
+        "name": "DeviceReduceSingleTileKernel",
+        "count": 36,
+        "duration_sum_ms": 0.05677,
+        "interval_union_ms": 0.05677,
+        "bytes": 0
+      },
+      {
+        "name": "DeviceCompactInitKernel",
+        "count": 36,
+        "duration_sum_ms": 0.037856,
+        "interval_union_ms": 0.037856,
+        "bytes": 0
+      },
+      {
+        "name": "triton_red_fused_argmax_0",
+        "count": 1,
+        "duration_sum_ms": 0.036449,
+        "interval_union_ms": 0.036449,
+        "bytes": 0
+      },
+      {
+        "name": "triton_poi_fused_all_eq_0",
+        "count": 1,
+        "duration_sum_ms": 0.00192,
+        "interval_union_ms": 0.00192,
+        "bytes": 0
+      }
+    ],
+    "gpu_activity_interval_union_ms": 1361.728274,
+    "correlation_coverage": {
+      "gpu_activities": 3219,
+      "matched": 3219,
+      "fraction": 1.0,
+      "method": "unique runtime correlationId, process-qualified globalTid/globalPid (24 thread-id bits)"
+    },
+    "memory_kinds": {
+      "0": "Pageable",
+      "1": "Pinned",
+      "2": "Device",
+      "3": "Array",
+      "4": "Managed",
+      "5": "Device Static",
+      "6": "Managed Static",
+      "7": "Unknown"
+    }
+  },
+  "candidate": {
+    "path": "/home/tmz/.codex/worktrees/nanokv-native-linux/nanokv/bench_logs/m23-nsys/direct_store.sqlite",
+    "sha256": "081e453e5c9c4a5ce177e922c3d2bf2d06b95767833e384b5dd66f3c149e229d",
+    "schema": {
+      "NVTX_EVENTS": [
+        "start",
+        "end",
+        "eventType",
+        "rangeId",
+        "category",
+        "color",
+        "text",
+        "globalTid",
+        "endGlobalTid",
+        "textId",
+        "domainId",
+        "uint64Value",
+        "int64Value",
+        "doubleValue",
+        "uint32Value",
+        "int32Value",
+        "floatValue",
+        "jsonTextId",
+        "jsonText",
+        "binaryData",
+        "eventId"
+      ],
+      "CUPTI_ACTIVITY_KIND_RUNTIME": [
+        "start",
+        "end",
+        "eventClass",
+        "globalTid",
+        "correlationId",
+        "nameId",
+        "returnValue",
+        "callchainId"
+      ],
+      "CUPTI_ACTIVITY_KIND_MEMCPY": [
+        "start",
+        "end",
+        "deviceId",
+        "contextId",
+        "greenContextId",
+        "streamId",
+        "correlationId",
+        "globalPid",
+        "bytes",
+        "copyKind",
+        "deprecatedSrcId",
+        "srcKind",
+        "dstKind",
+        "srcDeviceId",
+        "srcContextId",
+        "dstDeviceId",
+        "dstContextId",
+        "migrationCause",
+        "graphNodeId",
+        "virtualAddress",
+        "copyCount"
+      ],
+      "CUPTI_ACTIVITY_KIND_KERNEL": [
+        "start",
+        "end",
+        "deviceId",
+        "contextId",
+        "greenContextId",
+        "streamId",
+        "correlationId",
+        "globalPid",
+        "demangledName",
+        "shortName",
+        "mangledName",
+        "launchType",
+        "cacheConfig",
+        "registersPerThread",
+        "gridX",
+        "gridY",
+        "gridZ",
+        "blockX",
+        "blockY",
+        "blockZ",
+        "staticSharedMemory",
+        "dynamicSharedMemory",
+        "localMemoryPerThread",
+        "localMemoryTotal",
+        "gridId",
+        "sharedMemoryExecuted",
+        "graphNodeId",
+        "sharedMemoryLimitConfig",
+        "qmdBulkReleaseDone",
+        "qmdPreexitDone",
+        "qmdLastCtaDone",
+        "graphId",
+        "clusterX",
+        "clusterY",
+        "clusterZ",
+        "clusterSchedulingPolicy",
+        "maxPotentialClusterSize",
+        "maxActiveClusters",
+        "sharedMemoryRequestedPercentage",
+        "tensorSizeMinusOneElements"
+      ],
+      "ENUM_CUDA_MEMCPY_OPER": [
+        "id",
+        "name",
+        "label"
+      ],
+      "ENUM_CUDA_MEM_KIND": [
+        "id",
+        "name",
+        "label"
+      ]
+    },
+    "step_cpu_ms": 1477.734751,
+    "annotation_count": 288,
+    "stages": {
+      "m12.prefill_selector": {
+        "layer_count": 36,
+        "cpu_inclusive_sum_ms": 780.08408,
+        "cpu_interval_union_ms": 780.08408,
+        "cuda_host_api_union_ms": 752.882097,
+        "host_time_outside_contained_cuda_api_ms": 27.201983,
+        "cuda_host_api": [
+          {
+            "name": "cudaStreamSynchronize_v3020",
+            "count": 144,
+            "duration_sum_ms": 744.231718,
+            "interval_union_ms": 744.231718,
+            "bytes": 0
+          },
+          {
+            "name": "cudaLaunchKernel_v7000",
+            "count": 576,
+            "duration_sum_ms": 5.565478,
+            "interval_union_ms": 5.565478,
+            "bytes": 0
+          },
+          {
+            "name": "cudaMemcpyAsync_v3020",
+            "count": 144,
+            "duration_sum_ms": 2.526679,
+            "interval_union_ms": 2.526679,
+            "bytes": 0
+          },
+          {
+            "name": "cudaMemsetAsync_v3020",
+            "count": 36,
+            "duration_sum_ms": 0.554585,
+            "interval_union_ms": 0.554585,
+            "bytes": 0
+          },
+          {
+            "name": "cudaEventQuery_v3020",
+            "count": 1,
+            "duration_sum_ms": 0.003637,
+            "interval_union_ms": 0.003637,
+            "bytes": 0
+          }
+        ],
+        "submitted_gpu_copies": [
+          {
+            "name": "Device-to-Host",
+            "count": 72,
+            "duration_sum_ms": 0.093506,
+            "interval_union_ms": 0.093506,
+            "bytes": 9360
+          },
+          {
+            "name": "Host-to-Device",
+            "count": 72,
+            "duration_sum_ms": 0.02784,
+            "interval_union_ms": 0.02784,
+            "bytes": 2736
+          }
+        ],
+        "submitted_gpu_kernels": [
+          {
+            "name": "reduce_kernel",
+            "count": 180,
+            "duration_sum_ms": 3.803407,
+            "interval_union_ms": 3.803407,
+            "bytes": 0
+          },
+          {
+            "name": "elementwise_kernel",
+            "count": 36,
+            "duration_sum_ms": 0.423554,
+            "interval_union_ms": 0.423554,
+            "bytes": 0
+          },
+          {
+            "name": "gemmSN_TN_kernel",
+            "count": 36,
+            "duration_sum_ms": 0.333348,
+            "interval_union_ms": 0.333348,
+            "bytes": 0
+          },
+          {
+            "name": "gatherTopK",
+            "count": 36,
+            "duration_sum_ms": 0.251811,
+            "interval_union_ms": 0.251811,
+            "bytes": 0
+          },
+          {
+            "name": "index_elementwise_kernel",
+            "count": 72,
+            "duration_sum_ms": 0.207969,
+            "interval_union_ms": 0.207969,
+            "bytes": 0
+          },
+          {
+            "name": "bitonicSortKVInPlace",
+            "count": 36,
+            "duration_sum_ms": 0.181922,
+            "interval_union_ms": 0.181922,
+            "bytes": 0
+          },
+          {
+            "name": "unrolled_elementwise_kernel",
+            "count": 36,
+            "duration_sum_ms": 0.122178,
+            "interval_union_ms": 0.122178,
+            "bytes": 0
+          },
+          {
+            "name": "DeviceSelectSweepKernel",
+            "count": 36,
+            "duration_sum_ms": 0.067074,
+            "interval_union_ms": 0.067074,
+            "bytes": 0
+          },
+          {
+            "name": "vectorized_elementwise_kernel",
+            "count": 36,
+            "duration_sum_ms": 0.058784,
+            "interval_union_ms": 0.058784,
+            "bytes": 0
+          },
+          {
+            "name": "DeviceReduceSingleTileKernel",
+            "count": 36,
+            "duration_sum_ms": 0.057376,
+            "interval_union_ms": 0.057376,
+            "bytes": 0
+          },
+          {
+            "name": "DeviceCompactInitKernel",
+            "count": 36,
+            "duration_sum_ms": 0.038112,
+            "interval_union_ms": 0.038112,
+            "bytes": 0
+          }
+        ],
+        "temporal_gpu_overlap_ms": 756.553599,
+        "temporal_flash_kernel_overlap_ms": 0.0,
+        "temporal_gemm_kernel_overlap_ms": 333.807782
+      },
+      "m12.prefill_cpu_gather": {
+        "layer_count": 36,
+        "cpu_inclusive_sum_ms": 31.563074,
+        "cpu_interval_union_ms": 31.563074,
+        "cuda_host_api_union_ms": 0.0,
+        "host_time_outside_contained_cuda_api_ms": 31.563074,
+        "cuda_host_api": [],
+        "submitted_gpu_copies": [],
+        "submitted_gpu_kernels": [],
+        "temporal_gpu_overlap_ms": 0.0,
+        "temporal_flash_kernel_overlap_ms": 0.0,
+        "temporal_gemm_kernel_overlap_ms": 0.0
+      },
+      "m12.prefill_h2d_pack": {
+        "layer_count": 36,
+        "cpu_inclusive_sum_ms": 64.999365,
+        "cpu_interval_union_ms": 64.999365,
+        "cuda_host_api_union_ms": 54.27729,
+        "host_time_outside_contained_cuda_api_ms": 10.722075,
+        "cuda_host_api": [
+          {
+            "name": "cudaStreamSynchronize_v3020",
+            "count": 72,
+            "duration_sum_ms": 49.274323,
+            "interval_union_ms": 49.274323,
+            "bytes": 0
+          },
+          {
+            "name": "cudaMemcpyAsync_v3020",
+            "count": 324,
+            "duration_sum_ms": 4.504649,
+            "interval_union_ms": 4.504649,
+            "bytes": 0
+          },
+          {
+            "name": "cudaLaunchKernel_v7000",
+            "count": 36,
+            "duration_sum_ms": 0.498318,
+            "interval_union_ms": 0.498318,
+            "bytes": 0
+          }
+        ],
+        "submitted_gpu_copies": [
+          {
+            "name": "Host-to-Device",
+            "count": 72,
+            "duration_sum_ms": 48.894521,
+            "interval_union_ms": 48.894521,
+            "bytes": 301989888
+          },
+          {
+            "name": "Device-to-Device",
+            "count": 252,
+            "duration_sum_ms": 3.57844,
+            "interval_union_ms": 3.57844,
+            "bytes": 688914432
+          }
+        ],
+        "submitted_gpu_kernels": [
+          {
+            "name": "elementwise_kernel",
+            "count": 36,
+            "duration_sum_ms": 1.60616,
+            "interval_union_ms": 1.60616,
+            "bytes": 0
+          }
+        ],
+        "temporal_gpu_overlap_ms": 52.288459,
+        "temporal_flash_kernel_overlap_ms": 0.0,
+        "temporal_gemm_kernel_overlap_ms": 0.0
+      },
+      "m12.prefill_attention": {
+        "layer_count": 36,
+        "cpu_inclusive_sum_ms": 11.972437,
+        "cpu_interval_union_ms": 11.972437,
+        "cuda_host_api_union_ms": 0.61369,
+        "host_time_outside_contained_cuda_api_ms": 11.358747,
+        "cuda_host_api": [
+          {
+            "name": "cudaLaunchKernel_v7000",
+            "count": 36,
+            "duration_sum_ms": 0.61369,
+            "interval_union_ms": 0.61369,
+            "bytes": 0
+          }
+        ],
+        "submitted_gpu_copies": [],
+        "submitted_gpu_kernels": [
+          {
+            "name": "flash_fwd_kernel",
+            "count": 36,
+            "duration_sum_ms": 317.035751,
+            "interval_union_ms": 317.035751,
+            "bytes": 0
+          }
+        ],
+        "temporal_gpu_overlap_ms": 5.413354,
+        "temporal_flash_kernel_overlap_ms": 4.055976,
+        "temporal_gemm_kernel_overlap_ms": 0.0
+      },
+      "m12.prefill_store_kv": {
+        "layer_count": 36,
+        "cpu_inclusive_sum_ms": 508.544741,
+        "cpu_interval_union_ms": 508.544741,
+        "cuda_host_api_union_ms": 445.28166,
+        "host_time_outside_contained_cuda_api_ms": 63.263081,
+        "cuda_host_api": [
+          {
+            "name": "cudaMemcpyAsync_v3020",
+            "count": 108,
+            "duration_sum_ms": 432.567663,
+            "interval_union_ms": 432.567663,
+            "bytes": 0
+          },
+          {
+            "name": "cudaLaunchKernel_v7000",
+            "count": 1584,
+            "duration_sum_ms": 12.110745,
+            "interval_union_ms": 12.110745,
+            "bytes": 0
+          },
+          {
+            "name": "cudaStreamSynchronize_v3020",
+            "count": 72,
+            "duration_sum_ms": 0.603252,
+            "interval_union_ms": 0.603252,
+            "bytes": 0
+          }
+        ],
+        "submitted_gpu_copies": [
+          {
+            "name": "Device-to-Host",
+            "count": 72,
+            "duration_sum_ms": 109.82921,
+            "interval_union_ms": 109.82921,
+            "bytes": 603979776
+          },
+          {
+            "name": "Device-to-Device",
+            "count": 36,
+            "duration_sum_ms": 0.206561,
+            "interval_union_ms": 0.206561,
+            "bytes": 37748736
+          }
+        ],
+        "submitted_gpu_kernels": [
+          {
+            "name": "elementwise_kernel",
+            "count": 468,
+            "duration_sum_ms": 16.458583,
+            "interval_union_ms": 16.458583,
+            "bytes": 0
+          },
+          {
+            "name": "ampere_sgemm_128x128_tn",
+            "count": 72,
+            "duration_sum_ms": 14.474176,
+            "interval_union_ms": 14.474176,
+            "bytes": 0
+          },
+          {
+            "name": "reduce_kernel",
+            "count": 360,
+            "duration_sum_ms": 5.588759,
+            "interval_union_ms": 5.588759,
+            "bytes": 0
+          },
+          {
+            "name": "gemv2T_kernel_val",
+            "count": 72,
+            "duration_sum_ms": 3.418018,
+            "interval_union_ms": 3.418018,
+            "bytes": 0
+          },
+          {
+            "name": "unrolled_elementwise_kernel",
+            "count": 36,
+            "duration_sum_ms": 2.300282,
+            "interval_union_ms": 2.300282,
+            "bytes": 0
+          },
+          {
+            "name": "_scatter_gather_elementwise_kernel",
+            "count": 252,
+            "duration_sum_ms": 1.60146,
+            "interval_union_ms": 1.60146,
+            "bytes": 0
+          },
+          {
+            "name": "vectorized_elementwise_kernel",
+            "count": 324,
+            "duration_sum_ms": 0.54596,
+            "interval_union_ms": 0.54596,
+            "bytes": 0
+          }
+        ],
+        "temporal_gpu_overlap_ms": 465.958965,
+        "temporal_flash_kernel_overlap_ms": 312.621502,
+        "temporal_gemm_kernel_overlap_ms": 14.064661
+      },
+      "m23.store_k_copy": {
+        "layer_count": 36,
+        "cpu_inclusive_sum_ms": 372.655471,
+        "cpu_interval_union_ms": 372.655471,
+        "cuda_host_api_union_ms": 370.57488,
+        "host_time_outside_contained_cuda_api_ms": 2.080591,
+        "cuda_host_api": [
+          {
+            "name": "cudaMemcpyAsync_v3020",
+            "count": 36,
+            "duration_sum_ms": 370.230943,
+            "interval_union_ms": 370.230943,
+            "bytes": 0
+          },
+          {
+            "name": "cudaStreamSynchronize_v3020",
+            "count": 36,
+            "duration_sum_ms": 0.343937,
+            "interval_union_ms": 0.343937,
+            "bytes": 0
+          }
+        ],
+        "submitted_gpu_copies": [
+          {
+            "name": "Device-to-Host",
+            "count": 36,
+            "duration_sum_ms": 54.353079,
+            "interval_union_ms": 54.353079,
+            "bytes": 301989888
+          }
+        ],
+        "submitted_gpu_kernels": [],
+        "temporal_gpu_overlap_ms": 365.948317,
+        "temporal_flash_kernel_overlap_ms": 311.595238,
+        "temporal_gemm_kernel_overlap_ms": 0.0
+      },
+      "m23.store_v_copy": {
+        "layer_count": 36,
+        "cpu_inclusive_sum_ms": 67.571668,
+        "cpu_interval_union_ms": 67.571668,
+        "cuda_host_api_union_ms": 62.877046,
+        "host_time_outside_contained_cuda_api_ms": 4.694622,
+        "cuda_host_api": [
+          {
+            "name": "cudaMemcpyAsync_v3020",
+            "count": 36,
+            "duration_sum_ms": 61.542061,
+            "interval_union_ms": 61.542061,
+            "bytes": 0
+          },
+          {
+            "name": "cudaLaunchKernel_v7000",
+            "count": 36,
+            "duration_sum_ms": 1.07567,
+            "interval_union_ms": 1.07567,
+            "bytes": 0
+          },
+          {
+            "name": "cudaStreamSynchronize_v3020",
+            "count": 36,
+            "duration_sum_ms": 0.259315,
+            "interval_union_ms": 0.259315,
+            "bytes": 0
+          }
+        ],
+        "submitted_gpu_copies": [
+          {
+            "name": "Device-to-Host",
+            "count": 36,
+            "duration_sum_ms": 55.476131,
+            "interval_union_ms": 55.476131,
+            "bytes": 301989888
+          }
+        ],
+        "submitted_gpu_kernels": [
+          {
+            "name": "elementwise_kernel",
+            "count": 36,
+            "duration_sum_ms": 1.512625,
+            "interval_union_ms": 1.512625,
+            "bytes": 0
+          }
+        ],
+        "temporal_gpu_overlap_ms": 56.988756,
+        "temporal_flash_kernel_overlap_ms": 0.0,
+        "temporal_gemm_kernel_overlap_ms": 0.0
+      },
+      "m23.build_representatives": {
+        "layer_count": 36,
+        "cpu_inclusive_sum_ms": 62.700896,
+        "cpu_interval_union_ms": 62.700896,
+        "cuda_host_api_union_ms": 10.823553,
+        "host_time_outside_contained_cuda_api_ms": 51.877343,
+        "cuda_host_api": [
+          {
+            "name": "cudaLaunchKernel_v7000",
+            "count": 1512,
+            "duration_sum_ms": 10.823553,
+            "interval_union_ms": 10.823553,
+            "bytes": 0
+          }
+        ],
+        "submitted_gpu_copies": [],
+        "submitted_gpu_kernels": [
+          {
+            "name": "elementwise_kernel",
+            "count": 396,
+            "duration_sum_ms": 14.677891,
+            "interval_union_ms": 14.677891,
+            "bytes": 0
+          },
+          {
+            "name": "ampere_sgemm_128x128_tn",
+            "count": 72,
+            "duration_sum_ms": 14.474176,
+            "interval_union_ms": 14.474176,
+            "bytes": 0
+          },
+          {
+            "name": "reduce_kernel",
+            "count": 360,
+            "duration_sum_ms": 5.588759,
+            "interval_union_ms": 5.588759,
+            "bytes": 0
+          },
+          {
+            "name": "gemv2T_kernel_val",
+            "count": 72,
+            "duration_sum_ms": 3.418018,
+            "interval_union_ms": 3.418018,
+            "bytes": 0
+          },
+          {
+            "name": "unrolled_elementwise_kernel",
+            "count": 36,
+            "duration_sum_ms": 2.300282,
+            "interval_union_ms": 2.300282,
+            "bytes": 0
+          },
+          {
+            "name": "_scatter_gather_elementwise_kernel",
+            "count": 252,
+            "duration_sum_ms": 1.60146,
+            "interval_union_ms": 1.60146,
+            "bytes": 0
+          },
+          {
+            "name": "vectorized_elementwise_kernel",
+            "count": 324,
+            "duration_sum_ms": 0.54596,
+            "interval_union_ms": 0.54596,
+            "bytes": 0
+          }
+        ],
+        "temporal_gpu_overlap_ms": 40.073856,
+        "temporal_flash_kernel_overlap_ms": 0.0,
+        "temporal_gemm_kernel_overlap_ms": 12.972724
+      }
+    },
+    "cuda_host_api": [
+      {
+        "name": "cudaStreamSynchronize_v3020",
+        "count": 290,
+        "duration_sum_ms": 814.435971,
+        "interval_union_ms": 814.435971,
+        "bytes": 0
+      },
+      {
+        "name": "cudaMemcpyAsync_v3020",
+        "count": 583,
+        "duration_sum_ms": 439.715893,
+        "interval_union_ms": 439.715893,
+        "bytes": 0
+      },
+      {
+        "name": "cudaLaunchKernel_v7000",
+        "count": 2345,
+        "duration_sum_ms": 19.83903,
+        "interval_union_ms": 19.83903,
+        "bytes": 0
+      },
+      {
+        "name": "cuLaunchKernel",
+        "count": 291,
+        "duration_sum_ms": 2.866446,
+        "interval_union_ms": 2.866446,
+        "bytes": 0
+      },
+      {
+        "name": "cudaMemsetAsync_v3020",
+        "count": 36,
+        "duration_sum_ms": 0.554585,
+        "interval_union_ms": 0.554585,
+        "bytes": 0
+      },
+      {
+        "name": "cuKernelGetFunction",
+        "count": 36,
+        "duration_sum_ms": 0.097134,
+        "interval_union_ms": 0.097134,
+        "bytes": 0
+      },
+      {
+        "name": "cudaEventRecord_v3020",
+        "count": 5,
+        "duration_sum_ms": 0.023621,
+        "interval_union_ms": 0.023621,
+        "bytes": 0
+      },
+      {
+        "name": "cudaEventQuery_v3020",
+        "count": 5,
+        "duration_sum_ms": 0.016112,
+        "interval_union_ms": 0.016112,
+        "bytes": 0
+      },
+      {
+        "name": "cuProfilerStart",
+        "count": 1,
+        "duration_sum_ms": 0.010244,
+        "interval_union_ms": 0.010244,
+        "bytes": 0
+      },
+      {
+        "name": "cudaDeviceSynchronize_v3020",
+        "count": 1,
+        "duration_sum_ms": 0.004193,
+        "interval_union_ms": 0.004193,
+        "bytes": 0
+      }
+    ],
+    "gpu_copies": [
+      {
+        "name": "Device-to-Host",
+        "count": 146,
+        "duration_sum_ms": 109.925628,
+        "interval_union_ms": 109.925628,
+        "bytes": 603989145
+      },
+      {
+        "name": "Host-to-Device",
+        "count": 149,
+        "duration_sum_ms": 48.934138,
+        "interval_union_ms": 48.934138,
+        "bytes": 302058180
+      },
+      {
+        "name": "Device-to-Device",
+        "count": 288,
+        "duration_sum_ms": 3.785001,
+        "interval_union_ms": 3.785001,
+        "bytes": 726663168
+      }
+    ],
+    "gpu_kernels": [
+      {
+        "name": "ampere_bf16_s16816gemm_bf16_25_2...",
+        "count": 108,
+        "duration_sum_ms": 391.435093,
+        "interval_union_ms": 391.435093,
+        "bytes": 0
+      },
+      {
+        "name": "Kernel2",
+        "count": 36,
+        "duration_sum_ms": 378.613642,
+        "interval_union_ms": 378.613642,
+        "bytes": 0
+      },
+      {
+        "name": "flash_fwd_kernel",
+        "count": 36,
+        "duration_sum_ms": 317.035751,
+        "interval_union_ms": 317.035751,
+        "bytes": 0
+      },
+      {
+        "name": "triton_red_fused__to_copy_add__1...",
+        "count": 145,
+        "duration_sum_ms": 22.220192,
+        "interval_union_ms": 22.220192,
+        "bytes": 0
+      },
+      {
+        "name": "triton_poi_fused_mul_silu_0",
+        "count": 36,
+        "duration_sum_ms": 20.584037,
+        "interval_union_ms": 20.584037,
+        "bytes": 0
+      },
+      {
+        "name": "elementwise_kernel",
+        "count": 540,
+        "duration_sum_ms": 18.488297,
+        "interval_union_ms": 18.488297,
+        "bytes": 0
+      },
+      {
+        "name": "ampere_sgemm_128x128_tn",
+        "count": 72,
+        "duration_sum_ms": 14.474176,
+        "interval_union_ms": 14.474176,
+        "bytes": 0
+      },
+      {
+        "name": "reduce_kernel",
+        "count": 540,
+        "duration_sum_ms": 9.392166,
+        "interval_union_ms": 9.392166,
+        "bytes": 0
+      },
+      {
+        "name": "triton_poi_fused__to_copy_cat__3...",
+        "count": 36,
+        "duration_sum_ms": 6.026236,
+        "interval_union_ms": 6.026236,
+        "bytes": 0
+      },
+      {
+        "name": "gemv2T_kernel_val",
+        "count": 73,
+        "duration_sum_ms": 5.216182,
+        "interval_union_ms": 5.216182,
+        "bytes": 0
+      },
+      {
+        "name": "unrolled_elementwise_kernel",
+        "count": 74,
+        "duration_sum_ms": 2.42662,
+        "interval_union_ms": 2.42662,
+        "bytes": 0
+      },
+      {
+        "name": "triton_poi_fused__to_copy_cat__4...",
+        "count": 36,
+        "duration_sum_ms": 1.706515,
+        "interval_union_ms": 1.706515,
+        "bytes": 0
+      },
+      {
+        "name": "_scatter_gather_elementwise_kernel",
+        "count": 252,
+        "duration_sum_ms": 1.60146,
+        "interval_union_ms": 1.60146,
+        "bytes": 0
+      },
+      {
+        "name": "vectorized_elementwise_kernel",
+        "count": 360,
+        "duration_sum_ms": 0.604744,
+        "interval_union_ms": 0.604744,
+        "bytes": 0
+      },
+      {
+        "name": "gemmSN_TN_kernel",
+        "count": 36,
+        "duration_sum_ms": 0.333348,
+        "interval_union_ms": 0.333348,
+        "bytes": 0
+      },
+      {
+        "name": "gatherTopK",
+        "count": 36,
+        "duration_sum_ms": 0.251811,
+        "interval_union_ms": 0.251811,
+        "bytes": 0
+      },
+      {
+        "name": "index_elementwise_kernel",
+        "count": 73,
+        "duration_sum_ms": 0.212417,
+        "interval_union_ms": 0.212417,
+        "bytes": 0
+      },
+      {
+        "name": "bitonicSortKVInPlace",
+        "count": 36,
+        "duration_sum_ms": 0.181922,
+        "interval_union_ms": 0.181922,
+        "bytes": 0
+      },
+      {
+        "name": "indexSelectLargeIndex",
+        "count": 1,
+        "duration_sum_ms": 0.172514,
+        "interval_union_ms": 0.172514,
+        "bytes": 0
+      },
+      {
+        "name": "DeviceSelectSweepKernel",
+        "count": 36,
+        "duration_sum_ms": 0.067074,
+        "interval_union_ms": 0.067074,
+        "bytes": 0
+      },
+      {
+        "name": "DeviceReduceSingleTileKernel",
+        "count": 36,
+        "duration_sum_ms": 0.057376,
+        "interval_union_ms": 0.057376,
+        "bytes": 0
+      },
+      {
+        "name": "triton_red_fused_argmax_0",
+        "count": 1,
+        "duration_sum_ms": 0.038113,
+        "interval_union_ms": 0.038113,
+        "bytes": 0
+      },
+      {
+        "name": "DeviceCompactInitKernel",
+        "count": 36,
+        "duration_sum_ms": 0.038112,
+        "interval_union_ms": 0.038112,
+        "bytes": 0
+      },
+      {
+        "name": "triton_poi_fused_all_eq_0",
+        "count": 1,
+        "duration_sum_ms": 0.002048,
+        "interval_union_ms": 0.002048,
+        "bytes": 0
+      }
+    ],
+    "gpu_activity_interval_union_ms": 1353.824613,
+    "correlation_coverage": {
+      "gpu_activities": 3219,
+      "matched": 3219,
+      "fraction": 1.0,
+      "method": "unique runtime correlationId, process-qualified globalTid/globalPid (24 thread-id bits)"
+    },
+    "memory_kinds": {
+      "0": "Pageable",
+      "1": "Pinned",
+      "2": "Device",
+      "3": "Array",
+      "4": "Managed",
+      "5": "Device Static",
+      "6": "Managed Static",
+      "7": "Unknown"
+    }
+  },
+  "comparison": {
+    "m12.prefill_selector": {
+      "cpu_inclusive_sum_ms": {
+        "baseline": 767.704018,
+        "candidate": 780.08408
+      },
+      "cuda_host_api_union_ms": {
+        "baseline": 740.952821,
+        "candidate": 752.882097
+      },
+      "host_time_outside_contained_cuda_api_ms": {
+        "baseline": 26.751197,
+        "candidate": 27.201983
+      },
+      "temporal_gpu_overlap_ms": {
+        "baseline": 749.356159,
+        "candidate": 756.553599
+      },
+      "temporal_flash_kernel_overlap_ms": {
+        "baseline": 0.0,
+        "candidate": 0.0
+      },
+      "temporal_gemm_kernel_overlap_ms": {
+        "baseline": 325.530468,
+        "candidate": 333.807782
+      }
+    },
+    "m12.prefill_cpu_gather": {
+      "cpu_inclusive_sum_ms": {
+        "baseline": 30.500614,
+        "candidate": 31.563074
+      },
+      "cuda_host_api_union_ms": {
+        "baseline": 0.0,
+        "candidate": 0.0
+      },
+      "host_time_outside_contained_cuda_api_ms": {
+        "baseline": 30.500614,
+        "candidate": 31.563074
+      },
+      "temporal_gpu_overlap_ms": {
+        "baseline": 0.0,
+        "candidate": 0.0
+      },
+      "temporal_flash_kernel_overlap_ms": {
+        "baseline": 0.0,
+        "candidate": 0.0
+      },
+      "temporal_gemm_kernel_overlap_ms": {
+        "baseline": 0.0,
+        "candidate": 0.0
+      }
+    },
+    "m12.prefill_h2d_pack": {
+      "cpu_inclusive_sum_ms": {
+        "baseline": 61.100896,
+        "candidate": 64.999365
+      },
+      "cuda_host_api_union_ms": {
+        "baseline": 51.223685,
+        "candidate": 54.27729
+      },
+      "host_time_outside_contained_cuda_api_ms": {
+        "baseline": 9.877211,
+        "candidate": 10.722075
+      },
+      "temporal_gpu_overlap_ms": {
+        "baseline": 49.971821,
+        "candidate": 52.288459
+      },
+      "temporal_flash_kernel_overlap_ms": {
+        "baseline": 0.0,
+        "candidate": 0.0
+      },
+      "temporal_gemm_kernel_overlap_ms": {
+        "baseline": 0.0,
+        "candidate": 0.0
+      }
+    },
+    "m12.prefill_attention": {
+      "cpu_inclusive_sum_ms": {
+        "baseline": 11.660346,
+        "candidate": 11.972437
+      },
+      "cuda_host_api_union_ms": {
+        "baseline": 0.495629,
+        "candidate": 0.61369
+      },
+      "host_time_outside_contained_cuda_api_ms": {
+        "baseline": 11.164717,
+        "candidate": 11.358747
+      },
+      "temporal_gpu_overlap_ms": {
+        "baseline": 5.130102,
+        "candidate": 5.413354
+      },
+      "temporal_flash_kernel_overlap_ms": {
+        "baseline": 3.671468,
+        "candidate": 4.055976
+      },
+      "temporal_gemm_kernel_overlap_ms": {
+        "baseline": 0.0,
+        "candidate": 0.0
+      }
+    },
+    "m12.prefill_store_kv": {
+      "cpu_inclusive_sum_ms": {
+        "baseline": 567.935421,
+        "candidate": 508.544741
+      },
+      "cuda_host_api_union_ms": {
+        "baseline": 452.811488,
+        "candidate": 445.28166
+      },
+      "host_time_outside_contained_cuda_api_ms": {
+        "baseline": 115.123933,
+        "candidate": 63.263081
+      },
+      "temporal_gpu_overlap_ms": {
+        "baseline": 475.176636,
+        "candidate": 465.958965
+      },
+      "temporal_flash_kernel_overlap_ms": {
+        "baseline": 317.968128,
+        "candidate": 312.621502
+      },
+      "temporal_gemm_kernel_overlap_ms": {
+        "baseline": 14.67001,
+        "candidate": 14.064661
+      }
+    },
+    "m23.store_k_copy": {
+      "cpu_inclusive_sum_ms": {
+        "baseline": 401.837824,
+        "candidate": 372.655471
+      },
+      "cuda_host_api_union_ms": {
+        "baseline": 377.240318,
+        "candidate": 370.57488
+      },
+      "host_time_outside_contained_cuda_api_ms": {
+        "baseline": 24.597506,
+        "candidate": 2.080591
+      },
+      "temporal_gpu_overlap_ms": {
+        "baseline": 373.706352,
+        "candidate": 365.948317
+      },
+      "temporal_flash_kernel_overlap_ms": {
+        "baseline": 317.112945,
+        "candidate": 311.595238
+      },
+      "temporal_gemm_kernel_overlap_ms": {
+        "baseline": 0.0,
+        "candidate": 0.0
+      }
+    },
+    "m23.store_v_copy": {
+      "cpu_inclusive_sum_ms": {
+        "baseline": 91.043472,
+        "candidate": 67.571668
+      },
+      "cuda_host_api_union_ms": {
+        "baseline": 62.434311,
+        "candidate": 62.877046
+      },
+      "host_time_outside_contained_cuda_api_ms": {
+        "baseline": 28.609161,
+        "candidate": 4.694622
+      },
+      "temporal_gpu_overlap_ms": {
+        "baseline": 57.314573,
+        "candidate": 56.988756
+      },
+      "temporal_flash_kernel_overlap_ms": {
+        "baseline": 0.0,
+        "candidate": 0.0
+      },
+      "temporal_gemm_kernel_overlap_ms": {
+        "baseline": 0.0,
+        "candidate": 0.0
+      }
+    },
+    "m23.build_representatives": {
+      "cpu_inclusive_sum_ms": {
+        "baseline": 69.231635,
+        "candidate": 62.700896
+      },
+      "cuda_host_api_union_ms": {
+        "baseline": 12.030547,
+        "candidate": 10.823553
+      },
+      "host_time_outside_contained_cuda_api_ms": {
+        "baseline": 57.201088,
+        "candidate": 51.877343
+      },
+      "temporal_gpu_overlap_ms": {
+        "baseline": 42.714068,
+        "candidate": 40.073856
+      },
+      "temporal_flash_kernel_overlap_ms": {
+        "baseline": 0.0,
+        "candidate": 0.0
+      },
+      "temporal_gemm_kernel_overlap_ms": {
+        "baseline": 14.67001,
+        "candidate": 12.972724
+      }
+    }
+  },
+  "usable_as_clean_performance": false,
+  "caveats": [
+    "One instrumented window per arm, not an independent performance experiment.",
+    "Inclusive CPU annotations contain waiting for earlier submitted GPU work. CUDA API times also include waits/staging.",
+    "Contained CUDA API union is subtracted only to describe time outside those APIs; residual is not a measured host memcpy or recoverable budget.",
+    "Submitted-work correlation and temporal GPU overlap differ; neither identifies an exclusive critical path. Do not sum overlapping stage/API/GPU times.",
+    "CPU KV temporary host copy removal is established by frozen source diff plus exact audit; Nsight does not trace PyTorch CPU memcpy.",
+    "No hardware counters, CPU instruction samples or thread context switches were captured.",
+    "Sensitive process metadata and unrelated StringIds are not exported. Raw profiler reports remain local ignored files."
+  ]
+}

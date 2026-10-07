@@ -11,6 +11,19 @@ representatives plus protected sink/recent K/V, and gathers selected history
 for decode. It is a teaching and measurement project, not a production serving
 stack.
 
+## Fixed-policy TTFT optimization (native Linux, 2026-10-07)
+
+A direct blocking GPU-to-CPU history copy removes two intermediate host copies
+without changing sparse retrieval. On four fixed 16K/32K engineering inputs and
+three fresh-process pairs, warm encoded-request TTFT fell **3.99%** (geometric
+mean of all twelve paired ratios). Full attention-output/KV/selection audits and
+16 generated tokens per input matched exactly. Nsight confirms unchanged D2H
+payload and shows GPU waits inside long CPU ranges. This is an opt-in experiment,
+not a general production or sparse-vs-dense quality claim. See the
+[M23 report and reproduction](docs/NATIVE_TTFT_DIRECT_STORE_REPORT.md).
+
+The independent operator project is [LLM GPU Kernels](https://github.com/Tao20060602/llm-gpu-kernels).
+
 ## Native Linux operator experiment (2026-10-07)
 
 An opt-in bridge now connects the independent segmented attention kernels to

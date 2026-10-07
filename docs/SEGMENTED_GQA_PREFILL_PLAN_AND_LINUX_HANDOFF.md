@@ -2,6 +2,34 @@
 
 日期：2026-10-05。状态：**方案与只读分析完成，尚未实现、尚未获得新算子性能结果。**
 
+2026-10-07 最新状态：独立算子项目已完成真实 MoE layer-0 对照及分段 attention
+实验；operator bridge 尚未取得稳定完整 prefill 收益。固定稀疏参数下的独立 KV
+保存路径优化在三组新进程、四条16K/32K工程输入上使 warm TTFT 几何平均下降3.99%，
+完整所测输出审计一致。分别见[系统结果](NATIVE_TTFT_DIRECT_STORE_REPORT.md)及
+[独立算子仓库](https://github.com/Tao20060602/llm-gpu-kernels)。下文是历史计划，不应
+把早期“尚未实现”状态视为今日状态。
+
+2026-10-06 原生 Linux 接手更新：项目 venv、CUDA、FlashAttention、Triton 和
+固定版本 Qwen3-4B 的简短推理已验收，实际路径和版本见
+[环境记录](environment.md)。旧 WSL trace 尚未迁移，成本基线尚未开始。
+用户本轮希望重新比较具体算子选题；本文的 segmented-KV GQA prefill
+保留为主候选，具体算子选择待用户确定。下文的环境待验收状态与
+“本次仅提交文档”描述是 2026-10-05 的历史记录。
+
+用户随后明确希望将推理引擎优化与算子优化做成两个独立项目，以分别展示
+系统能力和 GPU 算子能力。按这个新要求，独立算子仓库作为建议交付形式，
+NanoKV 为可选集成场景；具体边界见
+[两个独立项目的规划](INDEPENDENT_OPERATOR_PROJECT_PLAN.md)。
+后文 P5 的“是否拆仓库后续讨论”保留为此前计划，本次已明确分项目的方向。
+
+同日选题目标进一步更新：用户希望独立算子项目覆盖 Tensor Core 与
+attention/MoE 的实际负载特征。当前建议优先评估 MoE routed grouped GEMM，
+attention prefill 作为后续候选。用户已确认此路线，独立仓库
+`/home/tmz/文档/ChatGPT/llm-gpu-kernels` 已建立，完成 BF16 dense/grouped GEMM
+bootstrap、边界数值检查与 HMMA 编译产物验证。成熟 backend、完整 MoE 链路
+及 attention 仍待实施。本文后续章节保留此前 segmented-prefill 的技术方案，
+当前执行状态以独立算子仓库及两个项目规划文档为准。
+
 用户选择的路线是：保留 NanoKV 的系统成果，开发一个可独立评测的 attention 算子，有证据后接回 NanoKV。用户计划下一步在原生 Linux 系统继续；本次仅提交文档，不安装环境、不启动模型 benchmark、不修改 runtime。
 
 ## 0. 新接手者先读什么、先做什么

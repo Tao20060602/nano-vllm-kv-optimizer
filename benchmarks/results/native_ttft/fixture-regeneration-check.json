@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "status": "passed",
+  "scope": "CPU tokenizer regeneration, no GPU/model inference",
+  "model_manifest_sha256": "c2f1d6a926d9e3e10c810a3cf566775c4ff290ac03afeea3ad9086bad50dbf34",
+  "source_manifest_sha256": "4ddc836765840223b1c3956bc2842ee21248765e09dd8495a18f952b5705f45a",
+  "fixture_sha256": "dee81146f8479f45b508c2311593ab803353c9860eafe771c9818fdb061500e5",
+  "checker_source_sha256": "cc2d63a8821c47f37551f73de943f9f053bf44bbbf10f585fde45205def67105",
+  "requests": [
+    {
+      "name": "archive-T16480",
+      "tokens": 16480,
+      "unit_token_count": 33,
+      "prompt_ids_sha256": "c662780500dfcd906b44083f52c691ea7a2669cae07ebf1ff7d6189b3d5763c9",
+      "original_16480_prefix_equal": true,
+      "full_regeneration_equal": true
+    },
+    {
+      "name": "archive-T32864",
+      "tokens": 32864,
+      "unit_token_count": 33,
+      "prompt_ids_sha256": "ea31e9291d08767a6d5d73031cef1bd8e15f53f8f75b9a1a6af9c3ac1bc24165",
+      "original_16480_prefix_equal": true,
+      "full_regeneration_equal": true
+    },
+    {
+      "name": "code-T16480",
+      "tokens": 16480,
+      "unit_token_count": 36,
+      "prompt_ids_sha256": "305a4a1e13ea26c635b2f9ebba885d8f317846818b21772f9b2b9d48d8234bf6",
+      "original_16480_prefix_equal": true,
+      "full_regeneration_equal": true
+    },
+    {
+      "name": "code-T32864",
+      "tokens": 32864,
+      "unit_token_count": 36,
+      "prompt_ids_sha256": "3a7e92fcd9646f79c4dc859a330df6b1d82f33404758642da3967aafde631b3d",
+      "original_16480_prefix_equal": true,
+      "full_regeneration_equal": true
+    }
+  ]
+}
