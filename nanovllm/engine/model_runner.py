@@ -133,6 +133,13 @@ class ModelRunner:
             self.context_db = None
             if getattr(config, 'use_m12_runtime', False):
                 from nanovllm.sparse.m12_runtime import M12Config, M12LayerRuntime
+                prefill_adapter = None
+                if config.sparse_prefill_attention_backend in ("flash_reuse", "operator"):
+                    from nanovllm.sparse.segmented_prefill_adapter import SegmentedPrefillAdapter
+                    prefill_adapter = SegmentedPrefillAdapter(
+                        config.sparse_prefill_attention_backend, head_dim ** -0.5,
+                        (hf_config.num_attention_heads, num_kv_heads, head_dim, hf_config.dtype),
+                        config.sparse_operator_root)
                 m12_cfg = M12Config(
                     block_size=config.sparse_retrieval_block_size,
                     r=config.sparse_num_representatives,
@@ -156,6 +163,7 @@ class ModelRunner:
                     check_finite_outputs=config.sparse_check_finite_outputs,
                     prefill_query_segments=config.sparse_prefill_query_segments,
                     prefill_attention_backend=config.sparse_prefill_attention_backend,
+                    prefill_adapter=prefill_adapter,
                 )
                 layer_id = 0
                 for module in self.model.modules():

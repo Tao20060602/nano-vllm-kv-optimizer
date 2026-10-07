@@ -115,6 +115,8 @@ class M12Config:
     check_finite_outputs: bool = False
     prefill_query_segments: int = 1
     prefill_attention_backend: str = "torch"
+    # Shared single-stream scratch; absent in the original/default paths.
+    prefill_adapter: object | None = None
 
     def __post_init__(self):
         if self.decode_kv_pipeline and not self.use_index_select:
@@ -464,29 +466,41 @@ class M12LayerRuntime:
             sink_len = min(cfg.sink_tokens, self.valid_len)
             _, recent_offset, recent_len = prefill_recent_slice(
                 self.valid_len, cfg.sink_tokens, cfg.recent_tokens)
-            total = sel_hist_tokens + sink_len + recent_len + T
-            k_pack = torch.empty(total, Hkv, D, dtype=k.dtype, device=device)
-            v_pack = torch.empty(total, Hkv, D, dtype=k.dtype, device=device)
-
-            off = 0
-            k_pack[off:off + sel_hist_tokens] = self.stage_k[:sel_hist_tokens].to(device)
-            v_pack[off:off + sel_hist_tokens] = self.stage_v[:sel_hist_tokens].to(device)
-            off += sel_hist_tokens
-            k_pack[off:off + sink_len] = self.sink_k[:sink_len]
-            v_pack[off:off + sink_len] = self.sink_v[:sink_len]
-            off += sink_len
-
-            if recent_len:
+            adapter = cfg.prefill_adapter
+            if adapter is not None:
                 recent_end = recent_offset + recent_len
-                k_pack[off:off + recent_len] = self.recent_k[recent_offset:recent_end]
-                v_pack[off:off + recent_len] = self.recent_v[recent_offset:recent_end]
-                off += recent_len
+                invocation = adapter.prepare(
+                    q, self.stage_k[:sel_hist_tokens], self.stage_v[:sel_hist_tokens],
+                    (self.sink_k[:sink_len], self.sink_v[:sink_len]),
+                    (self.recent_k[recent_offset:recent_end], self.recent_v[recent_offset:recent_end]),
+                    (k, v))
+            else:
+                total = sel_hist_tokens + sink_len + recent_len + T
+                k_pack = torch.empty(total, Hkv, D, dtype=k.dtype, device=device)
+                v_pack = torch.empty(total, Hkv, D, dtype=k.dtype, device=device)
 
-            k_pack[off:off + T] = k
-            v_pack[off:off + T] = v
+                off = 0
+                k_pack[off:off + sel_hist_tokens] = self.stage_k[:sel_hist_tokens].to(device)
+                v_pack[off:off + sel_hist_tokens] = self.stage_v[:sel_hist_tokens].to(device)
+                off += sel_hist_tokens
+                k_pack[off:off + sink_len] = self.sink_k[:sink_len]
+                v_pack[off:off + sink_len] = self.sink_v[:sink_len]
+                off += sink_len
+
+                if recent_len:
+                    recent_end = recent_offset + recent_len
+                    k_pack[off:off + recent_len] = self.recent_k[recent_offset:recent_end]
+                    v_pack[off:off + recent_len] = self.recent_v[recent_offset:recent_end]
+                    off += recent_len
+
+                k_pack[off:off + T] = k
+                v_pack[off:off + T] = v
 
         with self._profile_range("prefill_attention"):
-            o = self._prefill_attention(q, k_pack, v_pack, causal_from=off)
+            if adapter is not None:
+                o = adapter.attend(invocation)
+            else:
+                o = self._prefill_attention(q, k_pack, v_pack, causal_from=off)
 
         # Current K/V become history only after current-chunk attention has
         # consumed the previous recent window.  This order avoids the old gap

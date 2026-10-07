@@ -1,0 +1,15 @@
+{
+  "status": "passed",
+  "base_commit": "dc8cff5",
+  "ast_checks": {
+    "_store_kv": true,
+    "_gpu_select": true,
+    "decode": true,
+    "prefill_first": true,
+    "reset": true,
+    "_prefill_attention": true,
+    "original_pack_branch_preserved": true
+  },
+  "syntax_files": 6,
+  "scope": "structural source check, not runtime or numerical evidence"
+}

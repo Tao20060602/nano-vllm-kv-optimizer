@@ -11,6 +11,19 @@ representatives plus protected sink/recent K/V, and gathers selected history
 for decode. It is a teaching and measurement project, not a production serving
 stack.
 
+## Native Linux operator experiment (2026-10-07)
+
+An opt-in bridge now connects the independent segmented attention kernels to
+M12 prefill, with shared scratch and cached dynamic pointer binding. Nine fresh
+processes compared the original FA2, reusable FA2 and operator paths on two
+fixed 16,480-token prompts. Complete prefill timing showed no stable gain;
+downstream tail retrieval sets differed despite matching first generated tokens.
+The default remains the original `flash` backend. See the
+[native integration report](docs/NATIVE_SEGMENTED_ADAPTER_REPORT.md) and
+[reproduction guide](docs/NATIVE_SEGMENTED_ADAPTER_USAGE.md).
+A concise [portfolio evidence guide](docs/PORTFOLIO_ENGINE_EVIDENCE.md) maps claims
+to their measured boundaries.
+
 ## Current status — project closeout (2026-10-03)
 
 The current reference setup is Qwen3-4B BF16 (snapshot

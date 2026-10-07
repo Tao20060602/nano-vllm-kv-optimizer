@@ -1,0 +1,539 @@
+{
+  "status": "passed",
+  "orders": [
+    [
+      "flash",
+      "flash_reuse",
+      "operator"
+    ],
+    [
+      "operator",
+      "flash_reuse",
+      "flash"
+    ],
+    [
+      "flash_reuse",
+      "operator",
+      "flash"
+    ]
+  ],
+  "source_hashes": {
+    "nanovllm/__init__.py": "7b240316e37758bea2983190d5f7d62456b8bda3b6cbaeffefad15a89f333c8a",
+    "nanovllm/config.py": "f09423b2c50f796a610e8face22f76e3481b7ba86525473a2c7ce1629f4098d9",
+    "nanovllm/engine/block_manager.py": "dced8ffd4a9d4475240ddc9f26e23f6426924abe05748a64b40818e5e3bb02a4",
+    "nanovllm/engine/llm_engine.py": "99f5081602fb5f3ce31ef90d74aab7292513edc8189be9d0eb2b11cc0f301629",
+    "nanovllm/engine/model_runner.py": "26726ded27cd527816c69a787591545186bad83b51e20a7bb54c181e79968915",
+    "nanovllm/engine/scheduler.py": "5de5b0c84baf96583c5cbe500ad586e2ba3e4ea2f6609c5a120a01082b59e296",
+    "nanovllm/engine/sequence.py": "b2bddbf791d6d3cba6df2bbfa86e8ec22291973ef8274521586fdd03a15d86f4",
+    "nanovllm/kvdb/__init__.py": "74b353ffab3d361245ec65788bb14970bb89a6e9ab355d01dc5e09cc00a86c01",
+    "nanovllm/kvdb/coordinator.py": "01f93c0a874e19c88405a2466d9720ef15667636f70c07a59e5d222a60dff870",
+    "nanovllm/kvdb/fingerprint.py": "e480a373e219b85e12c3b16b85c1143e4341826151b41fb7dec7f3d34d662f93",
+    "nanovllm/kvdb/metrics.py": "695be8322b2ef0c8e6f83b042ba5921913f7b66c6523d7b186fa6f73f65c7bcc",
+    "nanovllm/kvdb/prefix_index.py": "c70a596d41512d0b6e4a6fd71412b0b071c915f1516eaac7a2b56bd8d0147908",
+    "nanovllm/kvdb/store/__init__.py": "ee51e762e5fd116c0ef56e5d4f217a8ae860c97eb07d5e5a00eabf926db9a371",
+    "nanovllm/kvdb/store/base.py": "9eb42242e84847239f66a3707209eaf508db31279fb565eeff3cbe26f7997b81",
+    "nanovllm/kvdb/store/cpu.py": "f5cf3d7fead8ad8f0e3424e84940d31bd1156d114ea2790fe39cbc22069bcb44",
+    "nanovllm/kvdb/store/gpu.py": "9a9f1409280bc57091f96a60cd3065db04224ba4ff65374c97c65818343ea803",
+    "nanovllm/kvdb/timing.py": "0f7936f06ebd714dedbd2429d73f52f7661001dbec508517bbab37bd62e81d24",
+    "nanovllm/kvdb/types.py": "81713594124a7d95b022a679e93e89ebc5f4909924a5474cbd2f9f5412619927",
+    "nanovllm/layers/activation.py": "9dca7e6fae963ecb9d9d582b539d1c18e47825e103dac8c04058d6def8924c64",
+    "nanovllm/layers/attention.py": "1b375c57741836c36d1379a67fd193cf3d76908d839079cabd76ae577b1c328f",
+    "nanovllm/layers/embed_head.py": "e823fbd0a1eb9d64a90e93ade7d32f32235f0039bafc97d367d92a8ee06b3d0f",
+    "nanovllm/layers/layernorm.py": "a661fc4eeef736f29308c736da7d91cbc9d896d662c990a3f887dc6f6c8d7169",
+    "nanovllm/layers/linear.py": "9fe0d9917e15603d4af435591ba8b4c5f45b253ee1a825607061ca73d50470cf",
+    "nanovllm/layers/rotary_embedding.py": "56cb7bbe87aa8f738943373cfe6feb5c1abbecb96e32021c811a396bda8e7f8c",
+    "nanovllm/layers/sampler.py": "c07638b35363873e40e6a8fac717e2ce0fccdb404eccd091e00c577d81b0c2b7",
+    "nanovllm/llm.py": "ffe74fe7f64ba5169471a17596757b8d8f309e75f4db7040ac41b84db2e38179",
+    "nanovllm/models/llama.py": "227ab2f9d2e6dc7f299137c2d30daf388edf115ff8f8ba7e3ace160a463b16fc",
+    "nanovllm/models/qwen3.py": "fbb78dcabbff0b0d1fdc34d1c1e6eeca237cf3972910cebf6dba6a8c6ac37bb5",
+    "nanovllm/sampling_params.py": "493d63de99a1a931f4584aaba395f838ce8b36a7b220186f321d8ee7d6c67b5d",
+    "nanovllm/sparse/__init__.py": "fc1919495f7143e2a1451f186a669da508870969fdc9ec41ed539d1175a023b4",
+    "nanovllm/sparse/block_sparse.py": "fe58fbe222029e4425eb6680d3241bb729cd2aab9bba6b82cd527268a9f51633",
+    "nanovllm/sparse/cpu_offload.py": "b237da2cf817992de76dc9eb232ab588f514e63134378d626dfe7686487a021f",
+    "nanovllm/sparse/engine_runtime.py": "115b6d3c62a4afec96218b5fb227358d9945c8522c9af0d6123f7c6f0da173b2",
+    "nanovllm/sparse/graph_diprs.py": "6e71304d35deac49bf672d79bc0ae8e84041331d95d4e594c8938ade32fed4cc",
+    "nanovllm/sparse/m12_runtime.py": "eee08c4b2bfc4bd100bab1251ce8e98c86e67c20a8100a71aab6be0914ad1ca2",
+    "nanovllm/sparse/representatives.py": "b8192b47d78d1a9990b8adb6d49f112e23e5145344c5eb4788982e656adf8b20",
+    "nanovllm/sparse/segmented_prefill_adapter.py": "6c951af5f8760f956d47a9f7398f3a2fa286aa00066a5246a8cd030919903e93",
+    "nanovllm/utils/context.py": "83a608397c38cf22216dabba9e73b41cf985cf64c7a7f35c5c14e223fcd09959",
+    "nanovllm/utils/loader.py": "29d4b6c38a8356ad31f8858b1a14e893d7703cd3d5e32f86b0dc9ab3fb866e99",
+    "nanovllm/utils/trace.py": "317284cd6d4b5ac2956b520c26f677bf5cad983575d5155d17fafd63741ad1c2",
+    "benchmarks/benchmark_segmented_adapter.py": "7d5e4908fa0a1cb82957e13b7ac69ba6429cd05d540d44b69d3d2bb10e12cc6d",
+    "benchmarks/benchmark_m14_prefill.py": "41ab92c05386c2f54f26f95cccf8a7c9ad5932c8c914da9b3e6e0c7a713ab1f8",
+    "docs/NATIVE_SEGMENTED_ADAPTER_PLAN.md": "8333823ac1f1d05311d36addfd4b32afc90d93a0a3b7e9638e9f00d47cf5a22b",
+    "benchmarks/run_segmented_adapter_suite.py": "4e40b6aa2431189998eb9e66b76cc9c801fb7ae6281eb14a3959d92a212b58df"
+  },
+  "audit_path": "/home/tmz/.codex/worktrees/nanokv-native-linux/nanokv/bench_logs/operator_bridge/m19-native-20261007/operator-audit-recovered.json",
+  "audit_sha256": "3e90b39d7f04e019bb79aeb1f6dd46fa6459418649990dc0f4d0233cd882cc61",
+  "manifest_path": "/home/tmz/.codex/worktrees/nanokv-native-linux/nanokv/bench_logs/operator_bridge/m17-capture-20261006-native/manifest.json",
+  "manifest_sha256": "4ddc836765840223b1c3956bc2842ee21248765e09dd8495a18f952b5705f45a",
+  "jobs": [
+    {
+      "group": 0,
+      "backend": "flash",
+      "path": "/home/tmz/.codex/worktrees/nanokv-native-linux/nanokv/bench_logs/operator_bridge/m19-native-20261007/fresh-suite/group0-flash.json",
+      "log": "/home/tmz/.codex/worktrees/nanokv-native-linux/nanokv/bench_logs/operator_bridge/m19-native-20261007/fresh-suite/group0-flash.log",
+      "status": "passed",
+      "process_wall_s": 29.72390577300007,
+      "returncode": 0,
+      "result_sha256": "a5b00722a0ffea72ff4774858b1c53dc771a808fa3107a460938618284a24db7"
+    },
+    {
+      "group": 0,
+      "backend": "flash_reuse",
+      "path": "/home/tmz/.codex/worktrees/nanokv-native-linux/nanokv/bench_logs/operator_bridge/m19-native-20261007/fresh-suite/group0-flash_reuse.json",
+      "log": "/home/tmz/.codex/worktrees/nanokv-native-linux/nanokv/bench_logs/operator_bridge/m19-native-20261007/fresh-suite/group0-flash_reuse.log",
+      "status": "passed",
+      "process_wall_s": 27.952736287000107,
+      "returncode": 0,
+      "result_sha256": "486a7593cdce637155081fa7c15e722054ad141a72491dca9b95a81ec0c141c4"
+    },
+    {
+      "group": 0,
+      "backend": "operator",
+      "path": "/home/tmz/.codex/worktrees/nanokv-native-linux/nanokv/bench_logs/operator_bridge/m19-native-20261007/fresh-suite/group0-operator.json",
+      "log": "/home/tmz/.codex/worktrees/nanokv-native-linux/nanokv/bench_logs/operator_bridge/m19-native-20261007/fresh-suite/group0-operator.log",
+      "status": "passed",
+      "process_wall_s": 28.05558900699998,
+      "returncode": 0,
+      "result_sha256": "b6420cf17f396881a2259ac9a22dfcf98018a7712981977552b6a18795b1297a"
+    },
+    {
+      "group": 1,
+      "backend": "operator",
+      "path": "/home/tmz/.codex/worktrees/nanokv-native-linux/nanokv/bench_logs/operator_bridge/m19-native-20261007/fresh-suite/group1-operator.json",
+      "log": "/home/tmz/.codex/worktrees/nanokv-native-linux/nanokv/bench_logs/operator_bridge/m19-native-20261007/fresh-suite/group1-operator.log",
+      "status": "passed",
+      "process_wall_s": 28.071010126000147,
+      "returncode": 0,
+      "result_sha256": "42d5c09a2a99c894eff234531be563e314ceafd4b12567f48ad93ea6d30f7051"
+    },
+    {
+      "group": 1,
+      "backend": "flash_reuse",
+      "path": "/home/tmz/.codex/worktrees/nanokv-native-linux/nanokv/bench_logs/operator_bridge/m19-native-20261007/fresh-suite/group1-flash_reuse.json",
+      "log": "/home/tmz/.codex/worktrees/nanokv-native-linux/nanokv/bench_logs/operator_bridge/m19-native-20261007/fresh-suite/group1-flash_reuse.log",
+      "status": "passed",
+      "process_wall_s": 28.32834822399991,
+      "returncode": 0,
+      "result_sha256": "4cd9a85d6ed28db7187a46fc02eaa9a6110496efb7440214d9ffedc18c6bed6a"
+    },
+    {
+      "group": 1,
+      "backend": "flash",
+      "path": "/home/tmz/.codex/worktrees/nanokv-native-linux/nanokv/bench_logs/operator_bridge/m19-native-20261007/fresh-suite/group1-flash.json",
+      "log": "/home/tmz/.codex/worktrees/nanokv-native-linux/nanokv/bench_logs/operator_bridge/m19-native-20261007/fresh-suite/group1-flash.log",
+      "status": "passed",
+      "process_wall_s": 27.91173335899998,
+      "returncode": 0,
+      "result_sha256": "fea0dc3a86ce2957f2aed43d3b905cd4c3ac5f0879ab407976c35b13f11491fc"
+    },
+    {
+      "group": 2,
+      "backend": "flash_reuse",
+      "path": "/home/tmz/.codex/worktrees/nanokv-native-linux/nanokv/bench_logs/operator_bridge/m19-native-20261007/fresh-suite/group2-flash_reuse.json",
+      "log": "/home/tmz/.codex/worktrees/nanokv-native-linux/nanokv/bench_logs/operator_bridge/m19-native-20261007/fresh-suite/group2-flash_reuse.log",
+      "status": "passed",
+      "process_wall_s": 28.088077010000006,
+      "returncode": 0,
+      "result_sha256": "9c6c26d20677f42c72232d67b6a4dbe9ba9c262917ae8e3ed8c1869050954c16"
+    },
+    {
+      "group": 2,
+      "backend": "operator",
+      "path": "/home/tmz/.codex/worktrees/nanokv-native-linux/nanokv/bench_logs/operator_bridge/m19-native-20261007/fresh-suite/group2-operator.json",
+      "log": "/home/tmz/.codex/worktrees/nanokv-native-linux/nanokv/bench_logs/operator_bridge/m19-native-20261007/fresh-suite/group2-operator.log",
+      "status": "passed",
+      "process_wall_s": 27.98070534800013,
+      "returncode": 0,
+      "result_sha256": "24d63a136afd083338d6cca5a10611ca296d5feb32f4e011962cb40dcd04c969"
+    },
+    {
+      "group": 2,
+      "backend": "flash",
+      "path": "/home/tmz/.codex/worktrees/nanokv-native-linux/nanokv/bench_logs/operator_bridge/m19-native-20261007/fresh-suite/group2-flash.json",
+      "log": "/home/tmz/.codex/worktrees/nanokv-native-linux/nanokv/bench_logs/operator_bridge/m19-native-20261007/fresh-suite/group2-flash.log",
+      "status": "passed",
+      "process_wall_s": 27.680969645999994,
+      "returncode": 0,
+      "result_sha256": "c71f584a73df89bb0d5726adbd1179b97bb7fac446e73e33af7b9a4529dbabc4"
+    }
+  ],
+  "scope": "three fresh-process groups, two measured prompts per process after one warm request; first generated token only",
+  "model_audit": {
+    "status": "passed",
+    "revision": "1cfa9a7208912126459214e8b04321603b3df60c",
+    "model_path": "/home/tmz/models/Qwen3-4B",
+    "files": [
+      {
+        "name": ".gitattributes",
+        "sha256": "34448b82c17d60fec9b65b1f093c115ddbaadc04beb1b0140b6bfed2e012a930",
+        "git_blob_sha1": "52373fe24473b1aa44333d318f578ae6bf04b49b",
+        "matches_manifest": true,
+        "size": 1570
+      },
+      {
+        "name": "LICENSE",
+        "sha256": "832dd9e00a68dd83b3c3fb9f5588dad7dcf337a0db50f7d9483f310cd292e92e",
+        "git_blob_sha1": "6634c8cc3133b3848ec74b9f275acaaa1ea618ab",
+        "matches_manifest": true,
+        "size": 11343
+      },
+      {
+        "name": "README.md",
+        "sha256": "71add1cd091c309b1cb1a6b943f2476eb2b004124b3bd1d32dcd0b24cc1abc47",
+        "git_blob_sha1": "2de5ee7eee214bb55ea33ec7505c5838a7adf7f6",
+        "matches_manifest": true,
+        "size": 16857
+      },
+      {
+        "name": "config.json",
+        "sha256": "8ba006f74fecfaaeb392872a60f4a480e7ec9860153d2e1b769ec81f9a147f8a",
+        "git_blob_sha1": "e49eccdc32f36da9c09cfa0e737084f9e0105e5e",
+        "matches_manifest": true,
+        "size": 726
+      },
+      {
+        "name": "generation_config.json",
+        "sha256": "2325da0f15bb848e018c5ae071b7943332e9f871d6b60e2ed22ca97d4cb993d2",
+        "git_blob_sha1": "20a8a9156fc8c3f25295ca067f61fdf120d517c5",
+        "matches_manifest": true,
+        "size": 239
+      },
+      {
+        "name": "merges.txt",
+        "sha256": "8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5",
+        "git_blob_sha1": "31349551d90c7606f325fe0f11bbb8bd5fa0d7c7",
+        "matches_manifest": true,
+        "size": 1671853
+      },
+      {
+        "name": "model-00001-of-00003.safetensors",
+        "sha256": "328a91d3122359d5547f9d79521205bc0a46e1f79a792dfe650e99fc2d651223",
+        "git_blob_sha1": null,
+        "matches_manifest": true,
+        "size": 3957900840
+      },
+      {
+        "name": "model-00002-of-00003.safetensors",
+        "sha256": "6cd087b316306a68c562436b5492edbcf6e16c6dba3a1308279caa5a58e21ca5",
+        "git_blob_sha1": null,
+        "matches_manifest": true,
+        "size": 3987450520
+      },
+      {
+        "name": "model-00003-of-00003.safetensors",
+        "sha256": "e4bf436957184f4eeb86a80e9db394503f1f56446b2e6b7edeac5b81470f4ca1",
+        "git_blob_sha1": null,
+        "matches_manifest": true,
+        "size": 99630640
+      },
+      {
+        "name": "model.safetensors.index.json",
+        "sha256": "6dc0981b8829fead746441f68f38f24c5ca4a3a66351f652c26c6df0efc43ab2",
+        "git_blob_sha1": "95c0a0059df040d75dc6c396b174382cf61d2f91",
+        "matches_manifest": true,
+        "size": 32819
+      },
+      {
+        "name": "tokenizer.json",
+        "sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+        "git_blob_sha1": null,
+        "matches_manifest": true,
+        "size": 11422654
+      },
+      {
+        "name": "tokenizer_config.json",
+        "sha256": "d5d09f07b48c3086c508b30d1c9114bd1189145b74e982a265350c923acd8101",
+        "git_blob_sha1": "417d038a63fa3de29cfde265caedae14d1a58d92",
+        "matches_manifest": true,
+        "size": 9732
+      },
+      {
+        "name": "vocab.json",
+        "sha256": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910",
+        "git_blob_sha1": "4783fe10ac3adce15ac8f358ef5462739852c569",
+        "matches_manifest": true,
+        "size": 2776833
+      }
+    ]
+  },
+  "source_hashes_after": {
+    "nanovllm/__init__.py": "7b240316e37758bea2983190d5f7d62456b8bda3b6cbaeffefad15a89f333c8a",
+    "nanovllm/config.py": "f09423b2c50f796a610e8face22f76e3481b7ba86525473a2c7ce1629f4098d9",
+    "nanovllm/engine/block_manager.py": "dced8ffd4a9d4475240ddc9f26e23f6426924abe05748a64b40818e5e3bb02a4",
+    "nanovllm/engine/llm_engine.py": "99f5081602fb5f3ce31ef90d74aab7292513edc8189be9d0eb2b11cc0f301629",
+    "nanovllm/engine/model_runner.py": "26726ded27cd527816c69a787591545186bad83b51e20a7bb54c181e79968915",
+    "nanovllm/engine/scheduler.py": "5de5b0c84baf96583c5cbe500ad586e2ba3e4ea2f6609c5a120a01082b59e296",
+    "nanovllm/engine/sequence.py": "b2bddbf791d6d3cba6df2bbfa86e8ec22291973ef8274521586fdd03a15d86f4",
+    "nanovllm/kvdb/__init__.py": "74b353ffab3d361245ec65788bb14970bb89a6e9ab355d01dc5e09cc00a86c01",
+    "nanovllm/kvdb/coordinator.py": "01f93c0a874e19c88405a2466d9720ef15667636f70c07a59e5d222a60dff870",
+    "nanovllm/kvdb/fingerprint.py": "e480a373e219b85e12c3b16b85c1143e4341826151b41fb7dec7f3d34d662f93",
+    "nanovllm/kvdb/metrics.py": "695be8322b2ef0c8e6f83b042ba5921913f7b66c6523d7b186fa6f73f65c7bcc",
+    "nanovllm/kvdb/prefix_index.py": "c70a596d41512d0b6e4a6fd71412b0b071c915f1516eaac7a2b56bd8d0147908",
+    "nanovllm/kvdb/store/__init__.py": "ee51e762e5fd116c0ef56e5d4f217a8ae860c97eb07d5e5a00eabf926db9a371",
+    "nanovllm/kvdb/store/base.py": "9eb42242e84847239f66a3707209eaf508db31279fb565eeff3cbe26f7997b81",
+    "nanovllm/kvdb/store/cpu.py": "f5cf3d7fead8ad8f0e3424e84940d31bd1156d114ea2790fe39cbc22069bcb44",
+    "nanovllm/kvdb/store/gpu.py": "9a9f1409280bc57091f96a60cd3065db04224ba4ff65374c97c65818343ea803",
+    "nanovllm/kvdb/timing.py": "0f7936f06ebd714dedbd2429d73f52f7661001dbec508517bbab37bd62e81d24",
+    "nanovllm/kvdb/types.py": "81713594124a7d95b022a679e93e89ebc5f4909924a5474cbd2f9f5412619927",
+    "nanovllm/layers/activation.py": "9dca7e6fae963ecb9d9d582b539d1c18e47825e103dac8c04058d6def8924c64",
+    "nanovllm/layers/attention.py": "1b375c57741836c36d1379a67fd193cf3d76908d839079cabd76ae577b1c328f",
+    "nanovllm/layers/embed_head.py": "e823fbd0a1eb9d64a90e93ade7d32f32235f0039bafc97d367d92a8ee06b3d0f",
+    "nanovllm/layers/layernorm.py": "a661fc4eeef736f29308c736da7d91cbc9d896d662c990a3f887dc6f6c8d7169",
+    "nanovllm/layers/linear.py": "9fe0d9917e15603d4af435591ba8b4c5f45b253ee1a825607061ca73d50470cf",
+    "nanovllm/layers/rotary_embedding.py": "56cb7bbe87aa8f738943373cfe6feb5c1abbecb96e32021c811a396bda8e7f8c",
+    "nanovllm/layers/sampler.py": "c07638b35363873e40e6a8fac717e2ce0fccdb404eccd091e00c577d81b0c2b7",
+    "nanovllm/llm.py": "ffe74fe7f64ba5169471a17596757b8d8f309e75f4db7040ac41b84db2e38179",
+    "nanovllm/models/llama.py": "227ab2f9d2e6dc7f299137c2d30daf388edf115ff8f8ba7e3ace160a463b16fc",
+    "nanovllm/models/qwen3.py": "fbb78dcabbff0b0d1fdc34d1c1e6eeca237cf3972910cebf6dba6a8c6ac37bb5",
+    "nanovllm/sampling_params.py": "493d63de99a1a931f4584aaba395f838ce8b36a7b220186f321d8ee7d6c67b5d",
+    "nanovllm/sparse/__init__.py": "fc1919495f7143e2a1451f186a669da508870969fdc9ec41ed539d1175a023b4",
+    "nanovllm/sparse/block_sparse.py": "fe58fbe222029e4425eb6680d3241bb729cd2aab9bba6b82cd527268a9f51633",
+    "nanovllm/sparse/cpu_offload.py": "b237da2cf817992de76dc9eb232ab588f514e63134378d626dfe7686487a021f",
+    "nanovllm/sparse/engine_runtime.py": "115b6d3c62a4afec96218b5fb227358d9945c8522c9af0d6123f7c6f0da173b2",
+    "nanovllm/sparse/graph_diprs.py": "6e71304d35deac49bf672d79bc0ae8e84041331d95d4e594c8938ade32fed4cc",
+    "nanovllm/sparse/m12_runtime.py": "eee08c4b2bfc4bd100bab1251ce8e98c86e67c20a8100a71aab6be0914ad1ca2",
+    "nanovllm/sparse/representatives.py": "b8192b47d78d1a9990b8adb6d49f112e23e5145344c5eb4788982e656adf8b20",
+    "nanovllm/sparse/segmented_prefill_adapter.py": "6c951af5f8760f956d47a9f7398f3a2fa286aa00066a5246a8cd030919903e93",
+    "nanovllm/utils/context.py": "83a608397c38cf22216dabba9e73b41cf985cf64c7a7f35c5c14e223fcd09959",
+    "nanovllm/utils/loader.py": "29d4b6c38a8356ad31f8858b1a14e893d7703cd3d5e32f86b0dc9ab3fb866e99",
+    "nanovllm/utils/trace.py": "317284cd6d4b5ac2956b520c26f677bf5cad983575d5155d17fafd63741ad1c2",
+    "benchmarks/benchmark_segmented_adapter.py": "7d5e4908fa0a1cb82957e13b7ac69ba6429cd05d540d44b69d3d2bb10e12cc6d",
+    "benchmarks/benchmark_m14_prefill.py": "41ab92c05386c2f54f26f95cccf8a7c9ad5932c8c914da9b3e6e0c7a713ab1f8",
+    "docs/NATIVE_SEGMENTED_ADAPTER_PLAN.md": "8333823ac1f1d05311d36addfd4b32afc90d93a0a3b7e9638e9f00d47cf5a22b",
+    "benchmarks/run_segmented_adapter_suite.py": "4e40b6aa2431189998eb9e66b76cc9c801fb7ae6281eb14a3959d92a212b58df"
+  },
+  "summary": {
+    "pairs": [
+      {
+        "group": 0,
+        "prompt": "archive",
+        "operator_vs_reuse_prefill": 0.9983091066128581,
+        "operator_vs_reuse_tail": 0.9858626730196101,
+        "reuse_vs_flash_prefill": 1.0060261491208202,
+        "operator_vs_flash_prefill": 1.00432506615798,
+        "original_generated_ids": [
+          2797
+        ],
+        "reuse_generated_ids": [
+          2797
+        ],
+        "operator_generated_ids": [
+          2797
+        ],
+        "greedy_matches_reuse": true,
+        "greedy_reuse_matches_original": true,
+        "logical_state_matches_reuse": true,
+        "compared_later_layer_selections": 144,
+        "ordered_selection_differences": 35,
+        "selection_set_differences": 11,
+        "reuse_matches_original_states": true
+      },
+      {
+        "group": 0,
+        "prompt": "code",
+        "operator_vs_reuse_prefill": 1.00461101718642,
+        "operator_vs_reuse_tail": 0.9780191754027471,
+        "reuse_vs_flash_prefill": 1.0042122830250615,
+        "operator_vs_flash_prefill": 1.008842723120904,
+        "original_generated_ids": [
+          57912
+        ],
+        "reuse_generated_ids": [
+          57912
+        ],
+        "operator_generated_ids": [
+          57912
+        ],
+        "greedy_matches_reuse": true,
+        "greedy_reuse_matches_original": true,
+        "logical_state_matches_reuse": true,
+        "compared_later_layer_selections": 144,
+        "ordered_selection_differences": 31,
+        "selection_set_differences": 13,
+        "reuse_matches_original_states": true
+      },
+      {
+        "group": 1,
+        "prompt": "archive",
+        "operator_vs_reuse_prefill": 0.9926443289239102,
+        "operator_vs_reuse_tail": 1.0421991697883246,
+        "reuse_vs_flash_prefill": 1.0140008647018077,
+        "operator_vs_flash_prefill": 1.0065422078701907,
+        "original_generated_ids": [
+          2797
+        ],
+        "reuse_generated_ids": [
+          2797
+        ],
+        "operator_generated_ids": [
+          2797
+        ],
+        "greedy_matches_reuse": true,
+        "greedy_reuse_matches_original": true,
+        "logical_state_matches_reuse": true,
+        "compared_later_layer_selections": 144,
+        "ordered_selection_differences": 35,
+        "selection_set_differences": 11,
+        "reuse_matches_original_states": true
+      },
+      {
+        "group": 1,
+        "prompt": "code",
+        "operator_vs_reuse_prefill": 0.9944695108091381,
+        "operator_vs_reuse_tail": 0.9056664197420834,
+        "reuse_vs_flash_prefill": 1.014459237931088,
+        "operator_vs_flash_prefill": 1.00884878208114,
+        "original_generated_ids": [
+          57912
+        ],
+        "reuse_generated_ids": [
+          57912
+        ],
+        "operator_generated_ids": [
+          57912
+        ],
+        "greedy_matches_reuse": true,
+        "greedy_reuse_matches_original": true,
+        "logical_state_matches_reuse": true,
+        "compared_later_layer_selections": 144,
+        "ordered_selection_differences": 31,
+        "selection_set_differences": 13,
+        "reuse_matches_original_states": true
+      },
+      {
+        "group": 2,
+        "prompt": "archive",
+        "operator_vs_reuse_prefill": 1.0010199215535467,
+        "operator_vs_reuse_tail": 1.010579694878395,
+        "reuse_vs_flash_prefill": 1.0014257502570243,
+        "operator_vs_flash_prefill": 1.002447125963988,
+        "original_generated_ids": [
+          2797
+        ],
+        "reuse_generated_ids": [
+          2797
+        ],
+        "operator_generated_ids": [
+          2797
+        ],
+        "greedy_matches_reuse": true,
+        "greedy_reuse_matches_original": true,
+        "logical_state_matches_reuse": true,
+        "compared_later_layer_selections": 144,
+        "ordered_selection_differences": 35,
+        "selection_set_differences": 11,
+        "reuse_matches_original_states": true
+      },
+      {
+        "group": 2,
+        "prompt": "code",
+        "operator_vs_reuse_prefill": 1.0040366435419095,
+        "operator_vs_reuse_tail": 1.033006437249646,
+        "reuse_vs_flash_prefill": 1.0008912885602754,
+        "operator_vs_flash_prefill": 1.0049315299163957,
+        "original_generated_ids": [
+          57912
+        ],
+        "reuse_generated_ids": [
+          57912
+        ],
+        "operator_generated_ids": [
+          57912
+        ],
+        "greedy_matches_reuse": true,
+        "greedy_reuse_matches_original": true,
+        "logical_state_matches_reuse": true,
+        "compared_later_layer_selections": 144,
+        "ordered_selection_differences": 31,
+        "selection_set_differences": 13,
+        "reuse_matches_original_states": true
+      }
+    ],
+    "ratios": {
+      "operator_vs_reuse_prefill": {
+        "geomean": 0.9991715630110564,
+        "minimum": 0.9926443289239102,
+        "maximum": 1.00461101718642,
+        "n": 6
+      },
+      "operator_vs_reuse_tail": {
+        "geomean": 0.9915000251333185,
+        "minimum": 0.9056664197420834,
+        "maximum": 1.0421991697883246,
+        "n": 6
+      },
+      "reuse_vs_flash_prefill": {
+        "geomean": 1.0068209214212775,
+        "minimum": 1.0008912885602754,
+        "maximum": 1.014459237931088,
+        "n": 6
+      },
+      "operator_vs_flash_prefill": {
+        "geomean": 1.0059868337287299,
+        "minimum": 1.002447125963988,
+        "maximum": 1.00884878208114,
+        "n": 6
+      }
+    },
+    "per_prompt": {
+      "archive": {
+        "operator_vs_reuse_prefill": {
+          "geomean": 0.9973183420204225,
+          "minimum": 0.9926443289239102,
+          "maximum": 1.0010199215535467,
+          "n": 3
+        },
+        "operator_vs_reuse_tail": {
+          "geomean": 1.0126186103513133,
+          "minimum": 0.9858626730196101,
+          "maximum": 1.0421991697883246,
+          "n": 3
+        },
+        "reuse_vs_flash_prefill": {
+          "geomean": 1.0071375374172251,
+          "minimum": 1.0014257502570243,
+          "maximum": 1.0140008647018077,
+          "n": 3
+        },
+        "operator_vs_flash_prefill": {
+          "geomean": 1.004436739003478,
+          "minimum": 1.002447125963988,
+          "maximum": 1.0065422078701907,
+          "n": 3
+        }
+      },
+      "code": {
+        "operator_vs_reuse_prefill": {
+          "geomean": 1.0010282276644562,
+          "minimum": 0.9944695108091381,
+          "maximum": 1.00461101718642,
+          "n": 3
+        },
+        "operator_vs_reuse_tail": {
+          "geomean": 0.9708218768548096,
+          "minimum": 0.9056664197420834,
+          "maximum": 1.033006437249646,
+          "n": 3
+        },
+        "reuse_vs_flash_prefill": {
+          "geomean": 1.0065044049605825,
+          "minimum": 1.0008912885602754,
+          "maximum": 1.014459237931088,
+          "n": 3
+        },
+        "operator_vs_flash_prefill": {
+          "geomean": 1.0075393206341599,
+          "minimum": 1.0049315299163957,
+          "maximum": 1.00884878208114,
+          "n": 3
+        }
+      }
+    },
+    "all_greedy_matched": true,
+    "all_logical_states_matched": true,
+    "ordered_selection_differences": 198,
+    "selection_set_differences": 72
+  }
+}

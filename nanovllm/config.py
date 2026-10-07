@@ -59,6 +59,8 @@ class Config:
     # M14: later-chunk packed attention backend.  FlashAttention-2 keeps the
     # same selected blocks and one-softmax semantics as the torch reference.
     sparse_prefill_attention_backend: str = "flash"
+    # Explicit independent operator checkout, required only for the experiment.
+    sparse_operator_root: str | None = None
     # M18: direct gather into pinned staging is the measured M12 default.
     # Set False to reproduce the legacy advanced-indexing path.
     sparse_gather_index_select: bool = True
@@ -113,7 +115,12 @@ class Config:
         assert self.sparse_graph_projection_topk > 0
         assert self.sparse_query_samples > 0
         assert self.sparse_prefill_query_segments > 0
-        assert self.sparse_prefill_attention_backend in ("torch", "flash")
+        assert self.sparse_prefill_attention_backend in ("torch", "flash", "flash_reuse", "operator")
+        if self.sparse_prefill_attention_backend in ("flash_reuse", "operator"):
+            assert self.use_m12_runtime, "experimental prefill requires M12 runtime"
+        if self.sparse_prefill_attention_backend == "operator":
+            assert self.sparse_operator_root and os.path.isdir(self.sparse_operator_root), (
+                "operator backend requires an explicit operator repository path")
         assert self.enforce_eager, "sparse mode requires enforce_eager=True"
         assert self.tensor_parallel_size == 1, "sparse mode requires TP=1"
         assert self.max_num_seqs == 1, "sparse mode requires max_num_seqs=1"

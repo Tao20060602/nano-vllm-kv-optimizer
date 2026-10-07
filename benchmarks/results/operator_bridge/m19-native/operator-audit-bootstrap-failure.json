@@ -1,0 +1,24 @@
+{
+  "status": "failed",
+  "scope": "before model constructor",
+  "failure": "gpu_owner_check attempted int('[N/A]') while GPU process query was unavailable",
+  "gpu_diagnostic": {
+    "status": "gpu_unavailable",
+    "client_date": "2026-10-07 Asia/Shanghai",
+    "observed_utc": "2026-10-07T04:59:02.996741+00:00",
+    "kernel": "7.0.0-38-generic",
+    "boot_id": "18fcb2cd-fedb-432d-b18a-472bd42efce8",
+    "driver": "595.91.07",
+    "torch": "2.7.1+cu128",
+    "cuda_probe": "RuntimeError: No CUDA GPUs are available",
+    "gpu_recovery_action": "Reset",
+    "xids": [
+      119,
+      154
+    ],
+    "benchmark_scope": "model constructor and custom attention execution were not reached",
+    "model_audit_or_performance_completed": false,
+    "root_cause": "not established",
+    "diagnostic_folder": "/home/tmz/ai/diagnostics/nanokv-gpu-20261007-1256"
+  }
+}
