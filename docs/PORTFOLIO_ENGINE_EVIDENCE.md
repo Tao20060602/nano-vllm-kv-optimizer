@@ -23,6 +23,8 @@
 本轮只生成首token、两个固定文本，没有多请求serving、decode TPOT或广泛质量结论。
 保持默认FA2，不能把独立算子33.17%写成NanoKV请求加速或无损稀疏检索。
 
+查阅、无GPU证据核对与真实模型复现分别见[复现索引](REPRODUCTION_INDEX.md)。
+
 ## 与独立算子项目的分工
 
 NanoKV展示状态、内存层级、CPU/GPU数据路径、系统测量及性能/质量验收。

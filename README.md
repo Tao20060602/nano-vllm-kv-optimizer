@@ -20,7 +20,8 @@ fixed 16,480-token prompts. Complete prefill timing showed no stable gain;
 downstream tail retrieval sets differed despite matching first generated tokens.
 The default remains the original `flash` backend. See the
 [native integration report](docs/NATIVE_SEGMENTED_ADAPTER_REPORT.md) and
-[reproduction guide](docs/NATIVE_SEGMENTED_ADAPTER_USAGE.md).
+[reproduction guide](docs/NATIVE_SEGMENTED_ADAPTER_USAGE.md). For reading existing results or
+checking committed evidence without a GPU, see the [evidence index](docs/REPRODUCTION_INDEX.md).
 A concise [portfolio evidence guide](docs/PORTFOLIO_ENGINE_EVIDENCE.md) maps claims
 to their measured boundaries.
 
