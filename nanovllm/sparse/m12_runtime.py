@@ -176,7 +176,12 @@ class M12LayerRuntime:
 
         # ---- Pre-allocated packed GPU buffer ---------------------------
         # Layout: [selected_hist | sink | recent]
-        self.max_selected_tokens = cfg.top_k_blocks * B
+        # The selected-history region must fit the largest possible
+        # selection: fixed top-k or, when enabled, the relative-rule cap.
+        sel_budget = cfg.top_k_blocks
+        if cfg.decode_relative_a is not None:
+            sel_budget = max(sel_budget, cfg.decode_relative_max_blocks)
+        self.max_selected_tokens = sel_budget * B
         self.packed_total = (
             self.max_selected_tokens + cfg.sink_tokens + cfg.recent_tokens
         )
