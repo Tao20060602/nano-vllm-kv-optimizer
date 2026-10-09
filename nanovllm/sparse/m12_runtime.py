@@ -109,6 +109,9 @@ class M12Config:
     decode_relative_a: float | None = None
     # Hard cap on selected blocks when the relative rule is enabled.
     decode_relative_max_blocks: int = 48
+    # Union mode: keep fixed top-k AND threshold-passing blocks (capped).
+    # False replaces top-k with the threshold set (may drop baseline blocks).
+    decode_relative_union: bool = False
     max_model_len: int = 131072
     num_heads: int = 32
     num_kv_heads: int = 8
@@ -739,7 +742,12 @@ class M12LayerRuntime:
                 cap = min(cfg.decode_relative_max_blocks, max(1, avail))
                 order = torch.argsort(global_scores, descending=True)
                 cand = order[:cap]
-                keep = cand[global_scores[cand] >= threshold]
+                above = global_scores[cand] >= threshold
+                if cfg.decode_relative_union:
+                    pos = torch.arange(cand.numel(), device=cand.device) < k
+                    keep = cand[above | pos]
+                else:
+                    keep = cand[above]
                 if keep.numel() == 0:
                     keep = order[:k]  # degenerate all-masked fallback
                 topk_scores, topk_ids = global_scores[keep], keep

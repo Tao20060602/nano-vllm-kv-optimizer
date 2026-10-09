@@ -152,6 +152,7 @@ class ModelRunner:
                     dynamic_top_k_mass=config.sparse_dynamic_top_k_mass,
                     decode_relative_a=config.sparse_decode_relative_a,
                     decode_relative_max_blocks=config.sparse_decode_relative_max_blocks,
+                    decode_relative_union=config.sparse_decode_relative_union,
                     max_model_len=config.max_model_len,
                     num_heads=hf_config.num_attention_heads,
                     num_kv_heads=num_kv_heads,

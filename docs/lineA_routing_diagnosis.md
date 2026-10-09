@@ -79,3 +79,20 @@ Next arms if `a=0.01` saturates the cap: `0.1`, `0.001`.
   methodology changes must be mirrored here.
 - Do not claim quality preservation: the set is 20 rows, one seed, one
   prompt distribution; 32K dense control still missing.
+
+## A/B results (2026-10-10, 20 regenerated rows, greedy 32 tokens)
+
+| Arm | acc | mean selected hist tokens |
+|---|---|---:|
+| none (fixed Top-32) | 12/20 | 2048 |
+| a=0.01 replace | 11/20 | 1889 |
+| a=0.1 replace | 3/20 | 637 |
+
+- `a=0.01` flips vs baseline: fixes 18422, regresses 2908/1171; the other
+  7 wrong rows stay wrong. Coverage alone does not convert them.
+- `a=0.1` (beta ~= 26) starves the model (~10 blocks); the 3 survivors are
+  all in-chunk targets needing no selection.
+- Follow-up running: union mode (`decode_relative_union`), Top-32 plus
+  threshold extras capped at 48, at `a=0.01`. If the 7 still fail with the
+  target provably in-context, coverage is ruled out and the next step is
+  decode Q-window averaging or model-side discrimination.

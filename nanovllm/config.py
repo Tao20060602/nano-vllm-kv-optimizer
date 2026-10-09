@@ -43,6 +43,8 @@ class Config:
     sparse_decode_relative_a: float | None = None
     # Hard cap on decode-selected blocks when the relative rule is enabled.
     sparse_decode_relative_max_blocks: int = 48
+    # Union mode: keep fixed top-k AND threshold-passing blocks (capped).
+    sparse_decode_relative_union: bool = False
     # Fraction of normalized top-k representative score weight to retain.
     # This is a routing heuristic, not measured attention mass.
     sparse_dynamic_top_k_mass: float = 0.90
