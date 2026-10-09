@@ -123,3 +123,20 @@ the target is seen and still loses. Pure-replace `a=0.01` moving 3 rows
 coverage-only rule converts the 7 hard rows. Recommended next: decode
 Q-window averaging (align decode queries with prefill summaries to raise
 target rank/weight), not larger budgets.
+
+## a-sweep in union mode (2026-10-10, same 20 rows)
+
+Five log-spaced `a` between 0.01 and 0.1, Top-32 + threshold extras, cap 48:
+
+| a | acc | mean selected hist tokens |
+|---|---|---:|
+| 0.01 | 12/20 | 2460 |
+| 0.018 | 13/20 (+18422, nothing lost) | 2353 |
+| 0.032 | 13/20 (+18422, nothing lost) | 2259 |
+| 0.056 | 12/20 | 2171 |
+| 0.1 | 12/20 | 2095 |
+
+Sweet spot at `a ~= 0.018-0.032`: recovers the borderline row 18422 with
+strictly fewer tokens than `a=0.01`. The 7 hard rows fail at every setting
+while provably in-context (see membership table above), so the verdict
+stands: coverage is not their bottleneck.
