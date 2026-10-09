@@ -38,6 +38,11 @@ class Config:
     sparse_decode_top_k: int | None = None
     # Decode-only adaptive budget; prefill uses its fixed budget independently.
     sparse_dynamic_top_k: bool = False
+    # Decode-only relative-threshold selection (attention >= a * max).
+    # None preserves the existing fixed top-k decode behavior.
+    sparse_decode_relative_a: float | None = None
+    # Hard cap on decode-selected blocks when the relative rule is enabled.
+    sparse_decode_relative_max_blocks: int = 48
     # Fraction of normalized top-k representative score weight to retain.
     # This is a routing heuristic, not measured attention mass.
     sparse_dynamic_top_k_mass: float = 0.90
@@ -100,6 +105,11 @@ class Config:
         if self.sparse_dynamic_top_k:
             assert self.use_m12_runtime, "dynamic top-k requires the M12 runtime"
             assert self.sparse_top_k > 0
+        if self.sparse_decode_relative_a is not None:
+            assert self.use_m12_runtime, "decode relative-a requires the M12 runtime"
+            assert 0.0 < self.sparse_decode_relative_a < 1.0, (
+                "sparse_decode_relative_a must be in (0, 1)")
+            assert self.sparse_decode_relative_max_blocks >= 1
         if self.sparse_selector_cuda_graph:
             assert self.use_m12_runtime, "selector CUDA graph requires the M12 runtime"
         if self.sparse_selector_static_mask:

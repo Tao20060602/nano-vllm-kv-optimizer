@@ -20,6 +20,7 @@ from __future__ import annotations
 from contextlib import nullcontext
 from dataclasses import dataclass
 from time import perf_counter
+import math
 
 import torch
 import torch.nn.functional as F
@@ -102,6 +103,12 @@ class M12Config:
     decode_top_k_blocks: int | None = None
     dynamic_top_k: bool = False
     dynamic_top_k_mass: float = 0.90
+    # Decode-only relative-threshold selection: keep blocks whose raw
+    # representative score is within ln(a)/scale of the best (equivalent to
+    # keeping attention weights >= a * max). None preserves fixed top-k.
+    decode_relative_a: float | None = None
+    # Hard cap on selected blocks when the relative rule is enabled.
+    decode_relative_max_blocks: int = 48
     max_model_len: int = 131072
     num_heads: int = 32
     num_kv_heads: int = 8
@@ -127,6 +134,11 @@ class M12Config:
         ):
             if budget is not None and not 1 <= budget <= self.top_k_blocks:
                 raise ValueError(f"{name} must be in [1, top_k_blocks]")
+        if self.decode_relative_a is not None:
+            if not 0.0 < self.decode_relative_a < 1.0:
+                raise ValueError("decode_relative_a must be in (0, 1)")
+            if self.decode_relative_max_blocks < 1:
+                raise ValueError("decode_relative_max_blocks must be >= 1")
 
 
 class M12LayerRuntime:
@@ -199,6 +211,10 @@ class M12LayerRuntime:
         # M13 diagnostic: per-decode-token selected block IDs (default off)
         self.record_ids = False
         self.ids_history: list[list[int]] = []
+        # Margin diagnosis: per-decode-step query vectors for post-hoc
+        # target-block scoring (default off, CPU clones, no behavior change)
+        self.record_q = False
+        self.q_history: list[torch.Tensor] = []
         self.use_index_select = cfg.use_index_select
         self._selector_graph = None
         self._selector_graph_key = None
@@ -256,6 +272,7 @@ class M12LayerRuntime:
         self.prefill_cpu_gather_ms = 0.0
         self.cuda_stage_events.clear()
         self.ids_history.clear()
+        self.q_history.clear()
         self._clear_selector_graph()
         self._clear_selector_static_mask()
         self.selector_graph_setup_ms = 0.0
@@ -661,12 +678,16 @@ class M12LayerRuntime:
 
     def _gpu_select(self, q: torch.Tensor, *, dynamic: bool = False,
                     budget: int | None = None, use_graph: bool = False,
-                    use_static_mask: bool = False
+                    use_static_mask: bool = False, use_relative: bool = False
                     ) -> tuple[torch.Tensor, dict]:
         """GPU-vectorized GQA group-score + global temporal top-k.
 
         q: [Hq, D] or [Nq, Hq, D] GPU post-RoPE query summaries.  The Nq
            dimension is used by multi-query prefill routing and is max-reduced.
+        With ``use_relative`` (decode only), blocks scoring within
+        ``ln(a)/scale`` of the best are kept instead of a fixed top-k, capped
+        at ``decode_relative_max_blocks``.  This keeps attention weights
+        ``>= a * max``; ``a=None`` preserves the fixed top-k path.
         Returns (block_ids_cpu [K] int64, timing_dict).
         """
         cfg = self.cfg
@@ -685,6 +706,8 @@ class M12LayerRuntime:
         avail = nblocks - n_prot
         requested_k = cfg.top_k_blocks if budget is None else budget
         k = min(requested_k, max(1, avail))
+        if use_relative and (use_graph and cfg.selector_cuda_graph):
+            raise ValueError("relative-threshold selection requires the flat GPU path")
         if use_graph and cfg.selector_cuda_graph:
             topk_scores, topk_ids = self._graph_select(q, nblocks, k)
         else:
@@ -704,7 +727,20 @@ class M12LayerRuntime:
                 prot = prot[prot < nblocks]
                 if prot.numel() > 0:
                     global_scores[prot] = float("-inf")
-            topk_scores, topk_ids = global_scores.topk(k)
+            if use_relative:
+                a = cfg.decode_relative_a
+                assert a is not None and 0.0 < a < 1.0
+                threshold = float(global_scores.amax().item()) + math.log(a) / cfg.scale
+                cap = min(cfg.decode_relative_max_blocks, max(1, avail))
+                order = torch.argsort(global_scores, descending=True)
+                cand = order[:cap]
+                keep = cand[global_scores[cand] >= threshold]
+                if keep.numel() == 0:
+                    keep = order[:k]  # degenerate all-masked fallback
+                topk_scores, topk_ids = global_scores[keep], keep
+                k = int(keep.numel())
+            else:
+                topk_scores, topk_ids = global_scores.topk(k)
 
         t_d2h = perf_counter()
         with self._profile_range("selector_id_d2h"):
@@ -724,6 +760,47 @@ class M12LayerRuntime:
             "n_selected": chosen,
             "n_candidates": k,
             "n_query_summaries": nq,
+        }
+
+    def diagnose_target_margin(self, q: torch.Tensor, target_block: int) -> dict:
+        """Post-hoc score margin of one block under default selector scoring.
+
+        Mirrors the non-graph, non-static-mask branch of ``_gpu_select``:
+        GQA group max over reps and query summaries, global max over heads,
+        protected blocks masked to -inf. No state is modified; for diagnosis
+        only (call with saved ``q_history`` entries moved to CUDA).
+        Returns ``{target_score, cutoff, rank, nblocks, in_topk}`` where
+        ``rank`` is 0-based and ``cutoff`` is the k-th (last selected) score.
+        """
+        cfg = self.cfg
+        Hq, Hkv, D = cfg.num_heads, cfg.num_kv_heads, cfg.head_dim
+        nblocks = self.nblocks_filled
+        if q.ndim == 2:
+            q = q.unsqueeze(0)
+        assert q.ndim == 3 and q.shape[1:] == (Hq, D)
+        nq = q.shape[0]
+        q_g = q.view(nq, Hkv, self.groups_per_kv, D)
+        scores = torch.einsum(
+            "nhgd,hbrd->nhgbr", q_g.float(), self.reps_gpu[:, :nblocks].float())
+        scores = scores.amax(dim=-1).amax(dim=2).amax(dim=0)
+        global_scores = scores.amax(dim=0)
+        if self.protected_blocks:
+            prot = torch.tensor(sorted(self.protected_blocks),
+                                dtype=torch.long, device=global_scores.device)
+            prot = prot[prot < nblocks]
+            if prot.numel() > 0:
+                global_scores[prot] = float("-inf")
+        k = min(cfg.top_k_blocks, max(1, nblocks - len(
+            [p for p in self.protected_blocks if p < nblocks])))
+        order = torch.argsort(global_scores, descending=True)
+        rank = int((order == int(target_block)).nonzero(as_tuple=True)[0].item())
+        cutoff = float(global_scores[order[k - 1]].item())
+        return {
+            "target_score": float(global_scores[int(target_block)].item()),
+            "cutoff": cutoff,
+            "rank": rank,
+            "nblocks": nblocks,
+            "in_topk": rank < k,
         }
 
     def _profile_range(self, name: str):
@@ -747,6 +824,9 @@ class M12LayerRuntime:
         Hq = cfg.num_heads
 
         assert q.shape[0] == 1 and k.shape[0] == 1
+
+        if self.record_q:
+            self.q_history.append(q[0].detach().cpu().clone())
 
         def event_pair(name: str):
             if not self.profile_cuda_stages:
@@ -777,7 +857,8 @@ class M12LayerRuntime:
             block_ids_cpu, sel_info = self._gpu_select(
                 q[0], dynamic=cfg.dynamic_top_k,
                 budget=cfg.decode_top_k_blocks, use_graph=cfg.selector_cuda_graph,
-                use_static_mask=cfg.selector_static_mask)
+                use_static_mask=cfg.selector_static_mask,
+                use_relative=cfg.decode_relative_a is not None)
         selector_ms = (perf_counter() - t_sel) * 1000.0
         if selector_events:
             selector_events[1].record()
