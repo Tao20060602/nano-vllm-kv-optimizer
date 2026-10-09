@@ -96,3 +96,30 @@ Next arms if `a=0.01` saturates the cap: `0.1`, `0.001`.
   threshold extras capped at 48, at `a=0.01`. If the 7 still fail with the
   target provably in-context, coverage is ruled out and the next step is
   decode Q-window averaging or model-side discrimination.
+
+## Verdict (2026-10-10): coverage ruled out
+
+Union arm (`a=0.01`, Top-32 + threshold extras, cap 48): 12/20 with
+row-identical results to baseline — including losing the 18422 fix that
+pure-replace had. `verify_union.py` (record_ids, same arm) then proved the
+target block IS in decode selections for all 8 baseline-wrong rows, in
+27-46% of all (layer, step) pairs, yet every answer stays wrong:
+
+| idx | target block | decode membership | answer |
+|---|---|---:|---|
+| 6258 | 31 | 0.368 | wrong |
+| 8786 | 44 | 0.297 | wrong |
+| 10273 | 52 | 0.385 | wrong |
+| 18422 | 94 | 0.458 | wrong |
+| 9476 | 48 | 0.267 | wrong |
+| 9546 | 48 | 0.375 | wrong |
+| 7980 | 40 | 0.270 | wrong |
+| 5200 | 26 | 0.273 | wrong |
+
+The binding constraint is therefore not retrieval coverage but attention
+dilution among similar-key distractors (or model-side discrimination):
+the target is seen and still loses. Pure-replace `a=0.01` moving 3 rows
+(11/20) shows selection composition matters at the margin, but no
+coverage-only rule converts the 7 hard rows. Recommended next: decode
+Q-window averaging (align decode queries with prefill summaries to raise
+target rank/weight), not larger budgets.
