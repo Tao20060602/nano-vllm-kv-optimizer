@@ -82,6 +82,31 @@ i.e. without the quality loss that lowering Top-K causes.
 Per-row answers match exactly (same 8 misses: 6258, 8786, 10273, 18422,
 9476, 9546, 7980, 5200). Within this screen, int8 does not change quality.
 
+## Expanded quality evidence (2026-10-10, 290 rows, 5 tasks)
+
+Regenerated RULER rows, prompt = `input + answer_prefix` (matching the M22
+adapter), baseline vs int8, greedy, 30-32 new tokens. Scoring is the fraction
+of reference strings present (case-insensitive).
+
+| task (rows) | base % | int8 % | delta | identical token seqs | score-changed rows |
+|---|---:|---:|---:|---:|---:|
+| 8k multikey (100) | 77.0 | 77.0 | 0.0 | 46 | 2 |
+| 8k single (60) | 100.0 | 100.0 | 0.0 | 43 | 0 |
+| 8k vt (60) | 85.7 | 85.3 | -0.4 | 31 | 14 |
+| 16k multikey (40) | 27.5 | 30.0 | +2.5 | 8 | 1 |
+| 16k single (30) | 100.0 | 100.0 | 0.0 | 7 | 0 |
+| **total (290)** | **79.1** | **79.4** | **+0.3** | **135 (46.6%)** | **17 (5.9%)** |
+
+Of the 17 changed rows, **10 improved and 7 worsened** - symmetric, no
+systematic degradation. Variable tracking is the most sensitive task
+(14/60 rows shift, in both directions); single-needle tasks are unchanged.
+
+Honest read: int8 is **not lossless** - it perturbs the greedy path on ~53%
+of rows and changes the score on ~6% - but the aggregate is neutral (+0.3
+points over 290 rows) with no directional bias. This supersedes the weaker
+20-row "identical" claim. Bounded to these tasks, greedy short generations,
+and one seed.
+
 ## Net result
 
 int8 CPU-KV quantization: **-18.5% decode TPOT (113.5 -> 92.5 ms/token at
