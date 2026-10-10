@@ -725,6 +725,7 @@ class M12LayerRuntime:
         k = min(requested_k, max(1, avail))
         if use_relative and (use_graph and cfg.selector_cuda_graph):
             raise ValueError("relative-threshold selection requires the flat GPU path")
+        t_enq = perf_counter()
         if use_graph and cfg.selector_cuda_graph:
             topk_scores, topk_ids = self._graph_select(q, nblocks, k)
         else:
@@ -765,6 +766,7 @@ class M12LayerRuntime:
                 topk_scores, topk_ids = global_scores.topk(k)
 
         t_d2h = perf_counter()
+        enqueue_ms = (t_d2h - t_enq) * 1000.0
         with self._profile_range("selector_id_d2h"):
             if dynamic and cfg.dynamic_top_k and k == requested_k:
                 topk_scores_cpu = topk_scores.cpu()
@@ -779,6 +781,7 @@ class M12LayerRuntime:
 
         return block_ids_cpu, {
             "d2h_ms": d2h_ms,
+            "enqueue_ms": enqueue_ms,
             "n_selected": chosen,
             "n_candidates": k,
             "n_query_summaries": nq,
@@ -975,6 +978,7 @@ class M12LayerRuntime:
 
         self.timings = {
             "selector_ms": selector_ms,
+            "selector_enqueue_ms": sel_info.get("enqueue_ms", 0.0),
             "d2h_ms": sel_info.get("d2h_ms", 0.0),
             "cpu_gather_ms": gather_ms,
             "h2d_pack_ms": h2d_ms,

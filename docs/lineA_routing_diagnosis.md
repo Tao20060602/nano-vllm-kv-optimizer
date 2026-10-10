@@ -166,3 +166,36 @@ control on the same rows to separate model from sparse-attention error.
   default 1 (off). Rolling `self._q_window` is reset with the runtime.
 - Routing query = mean of last W decode `q[0]`; attention still uses the
   current single q. No effect when W=1.
+
+## Decode cost profile (2026-10-10, 32K, 36 layers, steady)
+
+`benchmarks/benchmark_m15_decode.py --cuda-stage-profile` plus a
+selector split (`bench_logs/lineA/profile_selector_split.py`):
+
+| stage | ms/token | share |
+|---|---:|---:|
+| selector | 40.5 | 36% |
+| — of which enqueue (CPU dispatch) | 38.9 | |
+| — of which D2H block | 0.7 | |
+| CPU gather | 25.4 | 23% |
+| H2D issue (CPU; device span ~49) | 4.1 | 4% |
+| packed attention | 7.5 | 7% |
+| other model work | ~34 | 30% |
+| total steady | 112.1 | |
+
+Findings:
+- Sparse attention itself is ~7% of TPOT; Python/CPU side dominates.
+- The selector is **CPU launch overhead**, not GPU compute (11.9 ms device
+  span over 36 layers) and not D2H wait (0.7 ms).
+- Top-k 32 vs 16 ABBA (3 fresh-process pairs): 122.2 -> 88.3 ms/token,
+  and the saving lands in selector (-18.9) and gather (-13.6), **not** in the
+  H2D issue timer. So H2D is only partly hidden; its cost surfaces inside the
+  selector's per-layer sync.
+- Prime targets: selector launch overhead (CUDA graph / fused kernel) and the
+  25 ms single-threaded CPU gather.
+
+## Selector launches: instrumented
+
+`_gpu_select` now reports `enqueue_ms` (CPU dispatch of score+topk) and
+`d2h_ms` (blocking `.cpu()`), summed across layers in `layer.timings`
+(`selector_enqueue_ms`). All opt-in/observational; defaults unchanged.
