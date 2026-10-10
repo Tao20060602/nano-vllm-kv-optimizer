@@ -155,6 +155,7 @@ class ModelRunner:
                     decode_relative_union=config.sparse_decode_relative_union,
                     decode_query_window=config.sparse_decode_query_window,
                     fused_selector=config.sparse_fused_selector,
+                    quant_history=config.sparse_quant_history,
                     max_model_len=config.max_model_len,
                     num_heads=hf_config.num_attention_heads,
                     num_kv_heads=num_kv_heads,

@@ -50,6 +50,8 @@ class Config:
     sparse_decode_query_window: int = 1
     # Fused Triton block-scoring kernel for the flat sparse selector path.
     sparse_fused_selector: bool = False
+    # Opt-in int8 quantization of the CPU history (K per-channel, V per-block).
+    sparse_quant_history: bool = False
     # Fraction of normalized top-k representative score weight to retain.
     # This is a routing heuristic, not measured attention mass.
     sparse_dynamic_top_k_mass: float = 0.90

@@ -67,6 +67,10 @@ def main() -> None:
         help="use the fused Triton block-scoring kernel for the flat selector",
     )
     parser.add_argument(
+        "--quant-history", action="store_true",
+        help="store the CPU history as int8 (K per-channel, V per-block)",
+    )
+    parser.add_argument(
         "--selector-abba", action="store_true",
         help=("within one run, warm four graph decode steps then alternate "
               "eager/graph/graph/eager for steady decode timing"),
@@ -163,6 +167,7 @@ def main() -> None:
         sparse_selector_cuda_graph=args.selector_cuda_graph,
         sparse_selector_static_mask=args.selector_static_mask,
         sparse_fused_selector=args.fused_selector,
+        sparse_quant_history=args.quant_history,
         sparse_check_finite_outputs=args.check_finite_output,
         rope_scaling_override=YARN,
     )
@@ -390,6 +395,7 @@ def main() -> None:
                 "selector_cuda_graph": args.selector_cuda_graph,
                 "selector_static_mask": args.selector_static_mask,
                 "fused_selector": args.fused_selector,
+                "quant_history": args.quant_history,
                 "selector_abba": args.selector_abba,
                 "record_selected_ids": args.record_selected_ids,
                 "check_finite_output": args.check_finite_output,

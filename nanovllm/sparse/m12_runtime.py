@@ -120,6 +120,8 @@ class M12Config:
     decode_query_window: int = 1
     # Fused Triton block-scoring kernel for the flat selector path.
     fused_selector: bool = False
+    # Opt-in int8 quantization of the CPU history (K per-channel, V per-block).
+    quant_history: bool = False
     max_model_len: int = 131072
     num_heads: int = 32
     num_kv_heads: int = 8
@@ -209,6 +211,28 @@ class M12LayerRuntime:
             self.max_selected_tokens, Hkv, D, dtype=dtype, device="cpu", pin_memory=True
         )
 
+        # ---- Opt-in int8 history quantization (default off) -----------
+        # K: per-channel scale [Hkv, D] fixed from the first stored chunk;
+        # V: per-block scale [blocks, Hkv].  Dequantized on GPU before
+        # attention.  Sink/recent stay bf16 (separate GPU buffers above).
+        self.quant_history = cfg.quant_history
+        self.k_scale = None                     # [Hkv, D] fp32, CUDA
+        self.v_scale_cpu = None                 # [cap_blocks, Hkv] fp32, CPU
+        self.stage_k_q = torch.empty(
+            self.max_selected_tokens, Hkv, D, dtype=torch.int8,
+            device="cpu", pin_memory=True)
+        self.stage_v_q = torch.empty(
+            self.max_selected_tokens, Hkv, D, dtype=torch.int8,
+            device="cpu", pin_memory=True)
+        self.hist_k_q = torch.empty(
+            self.max_selected_tokens, Hkv, D, dtype=torch.int8, device="cuda")
+        self.hist_v_q = torch.empty(
+            self.max_selected_tokens, Hkv, D, dtype=torch.int8, device="cuda")
+        self.stage_v_scale = torch.zeros(
+            sel_budget, Hkv, dtype=torch.float32, device="cpu", pin_memory=True)
+        self.hist_v_scale = torch.zeros(
+            sel_budget, Hkv, dtype=torch.float32, device="cuda")
+
         # ---- State -----------------------------------------------------
         self.valid_len = 0
         self.prefill_len = 0
@@ -294,6 +318,8 @@ class M12LayerRuntime:
         self.ids_history.clear()
         self.q_history.clear()
         self._q_window.clear()
+        # Recalibrate the per-channel K scale for the next sequence.
+        self.k_scale = None
         self._clear_selector_graph()
         self._clear_selector_static_mask()
         self.selector_graph_setup_ms = 0.0
@@ -352,13 +378,17 @@ class M12LayerRuntime:
         """Preallocate pageable CPU KV for nblocks blocks (no copy)."""
         cfg = self.cfg
         need = min(nblocks, self.max_blocks)
+        cpu_dtype = torch.int8 if self.quant_history else cfg.dtype
         if self.k_cpu is None or self.cpu_blocks_cap < need:
             self.k_cpu = torch.empty(
                 need, cfg.block_size, cfg.num_kv_heads, cfg.head_dim,
-                dtype=cfg.dtype, device="cpu")
+                dtype=cpu_dtype, device="cpu")
             self.v_cpu = torch.empty(
                 need, cfg.block_size, cfg.num_kv_heads, cfg.head_dim,
-                dtype=cfg.dtype, device="cpu")
+                dtype=cpu_dtype, device="cpu")
+            if self.quant_history:
+                self.v_scale_cpu = torch.empty(
+                    need, cfg.num_kv_heads, dtype=torch.float32, device="cpu")
             self.cpu_blocks_cap = need
 
     # ------------------------------------------------------------------
@@ -388,20 +418,42 @@ class M12LayerRuntime:
 
         # Lazily grow pageable CPU KV (never pinned).
         need = start_block + nblocks
+        cpu_dtype = torch.int8 if self.quant_history else cfg.dtype
         if self.k_cpu is None or self.cpu_blocks_cap < need:
             new_cap = max(need, 2 * (self.cpu_blocks_cap or 1))
-            new_k = torch.empty(new_cap, B, Hkv, D, dtype=cfg.dtype, device="cpu")
-            new_v = torch.empty(new_cap, B, Hkv, D, dtype=cfg.dtype, device="cpu")
+            new_k = torch.empty(new_cap, B, Hkv, D, dtype=cpu_dtype, device="cpu")
+            new_v = torch.empty(new_cap, B, Hkv, D, dtype=cpu_dtype, device="cpu")
             if self.k_cpu is not None and start_block > 0:
                 new_k[:start_block].copy_(self.k_cpu[:start_block])
                 new_v[:start_block].copy_(self.v_cpu[:start_block])
             self.k_cpu, self.v_cpu = new_k, new_v
+            if self.quant_history:
+                new_vs = torch.empty(new_cap, Hkv, dtype=torch.float32, device="cpu")
+                if self.v_scale_cpu is not None and start_block > 0:
+                    new_vs[:start_block].copy_(self.v_scale_cpu[:start_block])
+                self.v_scale_cpu = new_vs
             self.cpu_blocks_cap = new_cap
 
-        self.k_cpu[start_block:need].copy_(k_blocks.cpu())
-        self.v_cpu[start_block:need].copy_(v_blocks.cpu())
+        if self.quant_history:
+            from nanovllm.sparse.quant_kv import QMAX
+            # K: per-(kv_head, channel) scale, fixed from the first chunk.
+            if self.k_scale is None:
+                self.k_scale = (k_blocks.float().abs().amax(dim=(0, 1))
+                                .clamp_min(1e-8) / QMAX)
+            kq = torch.round(k_blocks.float() / self.k_scale).clamp(
+                -QMAX, QMAX).to(torch.int8)
+            self.k_cpu[start_block:need].copy_(kq.cpu())
+            # V: per-(block, kv_head) scale.
+            vs = (v_blocks.float().abs().amax(dim=(1, 3)).clamp_min(1e-8) / QMAX)
+            vq = torch.round(v_blocks.float() / vs[:, None, :, None]).clamp(
+                -QMAX, QMAX).to(torch.int8)
+            self.v_cpu[start_block:need].copy_(vq.cpu())
+            self.v_scale_cpu[start_block:need].copy_(vs.cpu())
+        else:
+            self.k_cpu[start_block:need].copy_(k_blocks.cpu())
+            self.v_cpu[start_block:need].copy_(v_blocks.cpu())
 
-        # Build reps for the new blocks on GPU.
+        # Build reps for the new blocks on GPU (from bf16, before quantization).
         self._build_reps_gpu(k_blocks, start_block, nblocks)
 
         # Sink: earliest tokens (first chunk only).
@@ -465,6 +517,8 @@ class M12LayerRuntime:
         T, Hkv, D = k.shape
         Hq = cfg.num_heads
         assert self.prefill_len > 0, "prefill_chunk requires prior history"
+        assert not (self.quant_history and cfg.prefill_adapter is not None), \
+            "quant_history is incompatible with the segmented prefill adapter"
 
         # 1. Select historical blocks from one or more local query summaries.
         # Four segment means preserve intent that a 4096-token global mean
@@ -483,7 +537,17 @@ class M12LayerRuntime:
         sel_hist_tokens = Ksel * B
         t_gather = perf_counter()
         with self._profile_range("prefill_cpu_gather"):
-            if self.use_index_select:
+            if self.quant_history:
+                flat_k = self.k_cpu[:self.cpu_blocks_cap].view(-1, Hkv, D)
+                flat_v = self.v_cpu[:self.cpu_blocks_cap].view(-1, Hkv, D)
+                tok_idx = (hist_ids.view(-1, 1) * B
+                           + torch.arange(B, dtype=torch.long)).reshape(-1)
+                torch.index_select(flat_k, 0, tok_idx,
+                                   out=self.stage_k_q[:sel_hist_tokens])
+                torch.index_select(flat_v, 0, tok_idx,
+                                   out=self.stage_v_q[:sel_hist_tokens])
+                self.stage_v_scale[:Ksel].copy_(self.v_scale_cpu[hist_ids])
+            elif self.use_index_select:
                 flat_k = self.k_cpu[:self.cpu_blocks_cap].view(-1, Hkv, D)
                 flat_v = self.v_cpu[:self.cpu_blocks_cap].view(-1, Hkv, D)
                 tok_idx = (hist_ids.view(-1, 1) * B
@@ -518,8 +582,20 @@ class M12LayerRuntime:
                 v_pack = torch.empty(total, Hkv, D, dtype=k.dtype, device=device)
 
                 off = 0
-                k_pack[off:off + sel_hist_tokens] = self.stage_k[:sel_hist_tokens].to(device)
-                v_pack[off:off + sel_hist_tokens] = self.stage_v[:sel_hist_tokens].to(device)
+                if self.quant_history:
+                    assert adapter is None, "quant_history is incompatible with prefill_adapter"
+                    self.hist_k_q[:sel_hist_tokens].copy_(self.stage_k_q[:sel_hist_tokens])
+                    self.hist_v_q[:sel_hist_tokens].copy_(self.stage_v_q[:sel_hist_tokens])
+                    self.hist_v_scale[:Ksel].copy_(self.stage_v_scale[:Ksel])
+                    k_pack[off:off + sel_hist_tokens] = (
+                        self.hist_k_q[:sel_hist_tokens].float() * self.k_scale).to(k.dtype)
+                    row_scale = self.hist_v_scale[:Ksel].repeat_interleave(B, dim=0)
+                    v_pack[off:off + sel_hist_tokens] = (
+                        self.hist_v_q[:sel_hist_tokens].float()
+                        * row_scale[:, :, None]).to(v.dtype)
+                else:
+                    k_pack[off:off + sel_hist_tokens] = self.stage_k[:sel_hist_tokens].to(device)
+                    v_pack[off:off + sel_hist_tokens] = self.stage_v[:sel_hist_tokens].to(device)
                 off += sel_hist_tokens
                 k_pack[off:off + sink_len] = self.sink_k[:sink_len]
                 v_pack[off:off + sink_len] = self.sink_v[:sink_len]
@@ -918,7 +994,17 @@ class M12LayerRuntime:
         # 3. CPU batch gather into pinned staging (vectorized index, no per-block loop)
         t_g = perf_counter()
         with self._profile_range("cpu_gather"):
-            if self.use_index_select:
+            if self.quant_history:
+                flat_k = self.k_cpu[:self.cpu_blocks_cap].view(-1, Hkv, D)
+                flat_v = self.v_cpu[:self.cpu_blocks_cap].view(-1, Hkv, D)
+                tok_idx = (block_ids_cpu.view(-1, 1) * B
+                           + torch.arange(B, dtype=torch.long)).reshape(-1)
+                torch.index_select(flat_k, 0, tok_idx,
+                                   out=self.stage_k_q[:sel_hist_tokens])
+                torch.index_select(flat_v, 0, tok_idx,
+                                   out=self.stage_v_q[:sel_hist_tokens])
+                self.stage_v_scale[:K].copy_(self.v_scale_cpu[block_ids_cpu])
+            elif self.use_index_select:
                 flat_k = self.k_cpu[:self.cpu_blocks_cap].view(-1, Hkv, D)
                 flat_v = self.v_cpu[:self.cpu_blocks_cap].view(-1, Hkv, D)
                 tok_idx = (block_ids_cpu.view(-1, 1) * B
@@ -936,36 +1022,65 @@ class M12LayerRuntime:
         # 4. Assemble packed GPU buffer: [selected_hist | sink | recent]
         h2d_events = event_pair("h2d_pack")
         t_h = perf_counter()
-        with self._profile_range("h2d_pack"):
-            self.packed_k[:sel_hist_tokens].copy_(
-                self.stage_k[:sel_hist_tokens], non_blocking=True)
-        h2d_ms = (perf_counter() - t_h) * 1000.0
-        if cfg.decode_kv_pipeline:
-            # K DMA may progress while the CPU fills a DISTINCT V staging
-            # buffer. No host slice is overwritten before its copy completes.
-            # All GPU work stays on the current stream: V and attention remain
-            # ordered after K, without an extra stream or CUDA synchronization.
-            t_gv = perf_counter()
-            with self._profile_range("cpu_gather"):
-                torch.index_select(flat_v, 0, tok_idx, out=self.stage_v[:sel_hist_tokens])
-            gather_ms += (perf_counter() - t_gv) * 1000.0
-        t_h = perf_counter()
-        with self._profile_range("h2d_pack"):
-            self.packed_v[:sel_hist_tokens].copy_(
-                self.stage_v[:sel_hist_tokens], non_blocking=True)
-            off = sel_hist_tokens
+        if self.quant_history:
+            # H2D int8 history + per-block V scales, then dequantize on GPU.
+            with self._profile_range("h2d_pack"):
+                self.hist_k_q[:sel_hist_tokens].copy_(
+                    self.stage_k_q[:sel_hist_tokens], non_blocking=True)
+                self.hist_v_scale[:K].copy_(self.stage_v_scale[:K], non_blocking=True)
+            h2d_ms = (perf_counter() - t_h) * 1000.0
+            t_h = perf_counter()
+            with self._profile_range("dequant"):
+                self.hist_v_q[:sel_hist_tokens].copy_(
+                    self.stage_v_q[:sel_hist_tokens], non_blocking=True)
+                pk = self.hist_k_q[:sel_hist_tokens].float() * self.k_scale
+                self.packed_k[:sel_hist_tokens].copy_(pk.to(self.packed_k.dtype))
+                row_scale = self.hist_v_scale[:K].repeat_interleave(B, dim=0)
+                pv = (self.hist_v_q[:sel_hist_tokens].float()
+                      * row_scale[:, :, None])
+                self.packed_v[:sel_hist_tokens].copy_(pv.to(self.packed_v.dtype))
+                off = sel_hist_tokens
+                sink_len = min(cfg.sink_tokens, self.valid_len)
+                self.packed_k[off:off + sink_len].copy_(self.sink_k[:sink_len])
+                self.packed_v[off:off + sink_len].copy_(self.sink_v[:sink_len])
+                off += sink_len
+                recent_len = min(cfg.recent_tokens, self.valid_len + 1)
+                self.packed_k[off:off + recent_len].copy_(self.recent_k[-recent_len:])
+                self.packed_v[off:off + recent_len].copy_(self.recent_v[-recent_len:])
+                off += recent_len
+            total_attend = off
+            h2d_ms += (perf_counter() - t_h) * 1000.0
+        else:
+            with self._profile_range("h2d_pack"):
+                self.packed_k[:sel_hist_tokens].copy_(
+                    self.stage_k[:sel_hist_tokens], non_blocking=True)
+            h2d_ms = (perf_counter() - t_h) * 1000.0
+            if cfg.decode_kv_pipeline:
+                # K DMA may progress while the CPU fills a DISTINCT V staging
+                # buffer. No host slice is overwritten before its copy completes.
+                # All GPU work stays on the current stream: V and attention remain
+                # ordered after K, without an extra stream or CUDA synchronization.
+                t_gv = perf_counter()
+                with self._profile_range("cpu_gather"):
+                    torch.index_select(flat_v, 0, tok_idx, out=self.stage_v[:sel_hist_tokens])
+                gather_ms += (perf_counter() - t_gv) * 1000.0
+            t_h = perf_counter()
+            with self._profile_range("h2d_pack"):
+                self.packed_v[:sel_hist_tokens].copy_(
+                    self.stage_v[:sel_hist_tokens], non_blocking=True)
+                off = sel_hist_tokens
 
-            sink_len = min(cfg.sink_tokens, self.valid_len)
-            self.packed_k[off:off + sink_len].copy_(self.sink_k[:sink_len])
-            self.packed_v[off:off + sink_len].copy_(self.sink_v[:sink_len])
-            off += sink_len
+                sink_len = min(cfg.sink_tokens, self.valid_len)
+                self.packed_k[off:off + sink_len].copy_(self.sink_k[:sink_len])
+                self.packed_v[off:off + sink_len].copy_(self.sink_v[:sink_len])
+                off += sink_len
 
-            recent_len = min(cfg.recent_tokens, self.valid_len + 1)
-            self.packed_k[off:off + recent_len].copy_(self.recent_k[-recent_len:])
-            self.packed_v[off:off + recent_len].copy_(self.recent_v[-recent_len:])
-            off += recent_len
-        total_attend = off
-        h2d_ms += (perf_counter() - t_h) * 1000.0
+                recent_len = min(cfg.recent_tokens, self.valid_len + 1)
+                self.packed_k[off:off + recent_len].copy_(self.recent_k[-recent_len:])
+                self.packed_v[off:off + recent_len].copy_(self.recent_v[-recent_len:])
+                off += recent_len
+            total_attend = off
+            h2d_ms += (perf_counter() - t_h) * 1000.0
         if h2d_events:
             h2d_events[1].record()
 
