@@ -45,6 +45,9 @@ class Config:
     sparse_decode_relative_max_blocks: int = 48
     # Union mode: keep fixed top-k AND threshold-passing blocks (capped).
     sparse_decode_relative_union: bool = False
+    # Decode Q-window routing: average the last W decode queries for routing
+    # only. 1 = off (use the current single query).
+    sparse_decode_query_window: int = 1
     # Fraction of normalized top-k representative score weight to retain.
     # This is a routing heuristic, not measured attention mass.
     sparse_dynamic_top_k_mass: float = 0.90
@@ -112,6 +115,10 @@ class Config:
             assert 0.0 < self.sparse_decode_relative_a < 1.0, (
                 "sparse_decode_relative_a must be in (0, 1)")
             assert self.sparse_decode_relative_max_blocks >= 1
+        if self.sparse_decode_query_window < 1:
+            raise AssertionError("sparse_decode_query_window must be >= 1")
+        if self.sparse_decode_query_window > 1:
+            assert self.use_m12_runtime, "decode query window requires the M12 runtime"
         if self.sparse_selector_cuda_graph:
             assert self.use_m12_runtime, "selector CUDA graph requires the M12 runtime"
         if self.sparse_selector_static_mask:

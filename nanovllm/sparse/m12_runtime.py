@@ -112,6 +112,10 @@ class M12Config:
     # Union mode: keep fixed top-k AND threshold-passing blocks (capped).
     # False replaces top-k with the threshold set (may drop baseline blocks).
     decode_relative_union: bool = False
+    # Decode Q-window routing: average the last W decode queries for
+    # *routing only* (attention still uses the current single q), so the
+    # routing query resembles prefill mean-Q summaries. 1 = off.
+    decode_query_window: int = 1
     max_model_len: int = 131072
     num_heads: int = 32
     num_kv_heads: int = 8
@@ -142,6 +146,8 @@ class M12Config:
                 raise ValueError("decode_relative_a must be in (0, 1)")
             if self.decode_relative_max_blocks < 1:
                 raise ValueError("decode_relative_max_blocks must be >= 1")
+        if self.decode_query_window < 1:
+            raise ValueError("decode_query_window must be >= 1")
 
 
 class M12LayerRuntime:
@@ -223,6 +229,8 @@ class M12LayerRuntime:
         # target-block scoring (default off, CPU clones, no behavior change)
         self.record_q = False
         self.q_history: list[torch.Tensor] = []
+        # Rolling decode-query buffer for Q-window routing (GPU, latest last).
+        self._q_window: list[torch.Tensor] = []
         self.use_index_select = cfg.use_index_select
         self._selector_graph = None
         self._selector_graph_key = None
@@ -281,6 +289,7 @@ class M12LayerRuntime:
         self.cuda_stage_events.clear()
         self.ids_history.clear()
         self.q_history.clear()
+        self._q_window.clear()
         self._clear_selector_graph()
         self._clear_selector_static_mask()
         self.selector_graph_setup_ms = 0.0
@@ -864,11 +873,24 @@ class M12LayerRuntime:
             recent_events[1].record()
 
         # 2. GPU selector -> block IDs D2H
+        # Routing query: optionally average the last W decode queries (window
+        # includes the current one) so decode routing resembles prefill
+        # mean-Q routing. Attention below still uses the current single q.
+        if cfg.decode_query_window > 1:
+            self._q_window.append(q[0].detach())
+            while len(self._q_window) > cfg.decode_query_window:
+                self._q_window.pop(0)
+            if len(self._q_window) == 1:
+                q_route = self._q_window[0]
+            else:
+                q_route = torch.stack(self._q_window, dim=0).mean(dim=0)
+        else:
+            q_route = q[0]
         selector_events = event_pair("selector")
         t_sel = perf_counter()
         with self._profile_range("selector"):
             block_ids_cpu, sel_info = self._gpu_select(
-                q[0], dynamic=cfg.dynamic_top_k,
+                q_route, dynamic=cfg.dynamic_top_k,
                 budget=cfg.decode_top_k_blocks, use_graph=cfg.selector_cuda_graph,
                 use_static_mask=cfg.selector_static_mask,
                 use_relative=cfg.decode_relative_a is not None)

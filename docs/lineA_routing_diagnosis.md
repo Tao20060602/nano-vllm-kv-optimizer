@@ -140,3 +140,29 @@ Sweet spot at `a ~= 0.018-0.032`: recovers the borderline row 18422 with
 strictly fewer tokens than `a=0.01`. The 7 hard rows fail at every setting
 while provably in-context (see membership table above), so the verdict
 stands: coverage is not their bottleneck.
+
+## Decode Q-window routing (2026-10-10)
+
+`decode_query_window=W` averages the last W decode queries for routing only
+(attention unchanged), union mode `a=0.032`, same 20 rows:
+
+| W | acc | mean selected hist tokens | flips vs baseline |
+|---|---|---:|---|
+| 1 | 13/20 | 2259 | +18422 |
+| 2 | 13/20 | 2313 | +18422 |
+| 4 | 12/20 | 2372 | +18422, -2122 |
+
+Averaging decode queries does not move the 7 hard rows either; W=4 only
+breaks an already-correct row. Combined with the threshold and union
+sweeps, no routing change tested converts them. Conclusion: those rows are
+a model-side discrimination limit under similar-key distractors, not a
+retrieval/routing defect. Recommended next: leave the default fixed Top-32
+(cheapest) and record this boundary; if pursued further, measure a dense
+control on the same rows to separate model from sparse-attention error.
+
+## Decode Q-window routing: implementation notes
+
+- `M12Config.decode_query_window` -> `Config.sparse_decode_query_window`,
+  default 1 (off). Rolling `self._q_window` is reset with the runtime.
+- Routing query = mean of last W decode `q[0]`; attention still uses the
+  current single q. No effect when W=1.
