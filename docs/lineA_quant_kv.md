@@ -94,6 +94,33 @@ Next: fuse the dequantize step into the attention kernel (remove the extra
 launches the event span exposes) and re-measure; then consider re-estimating
 `k_scale` over the full history.
 
+## Fused dequantize (2026-10-10)
+
+`nanovllm/sparse/fused_dequant.py` replaces the eager
+`hist.float() * scale -> to(bf16) -> packed` (several ops + a
+`repeat_interleave` per layer) with one Triton kernel writing both packed K
+and V (bit-exact vs the torch path; `bench_logs/lineA/test_fused_dequant.py`).
+Gated by `sparse_fused_dequant` (requires quant history).
+
+32K, Top-32, 3 pairs:
+
+| | steady TPOT | H2D device span |
+|---|---:|---:|
+| torch dequant | 91.8 | 34.8 |
+| fused dequant | 85.0 | 26.8 |
+
+H2D span -8.0 ms; paired TPOT deltas 9.9 / -2.0 / 12.5 (mean -6.8). Run-to-run
+variance is high (80.8-93.2), so the win is real but noise-level. Generated
+token IDs identical across all arms.
+
+## Cumulative decode result at 32K, Top-32
+
+| config | TPOT | vs baseline |
+|---|---:|---:|
+| baseline (bf16, torch dequant) | 113.5 | - |
+| int8 history | 92.5 | -18.5% |
+| int8 + fused dequant | ~85 | ~-25% |
+
 ## Known limitations / open items
 
 - `k_scale` is fixed from the first chunk; later K values outside its range
