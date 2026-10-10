@@ -62,8 +62,9 @@ Experiment details: [M16](docs/m16_dynamic_topk_results.md),
 [M18](docs/m18_nsight_gather_results.md),
 [M19](docs/m19_selector_graph_results.md),
 [M20](docs/m20_gather_results.md),
-[M21](docs/m21_selector_static_mask_results.md), and the
-[Line A routing diagnosis](docs/lineA_routing_diagnosis.md).
+[M21](docs/m21_selector_static_mask_results.md), the
+[Line A routing diagnosis](docs/lineA_routing_diagnosis.md), and
+[Line A int8 CPU-KV quantization](docs/lineA_quant_kv.md).
 
 For the full Chinese decision history—from prefix reuse and graph retrieval
 to the final optimizations, failed candidates, quality gaps and handoff—read
