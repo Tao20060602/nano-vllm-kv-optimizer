@@ -121,6 +121,34 @@ token IDs identical across all arms.
 | int8 history | 92.5 | -18.5% |
 | int8 + fused dequant | ~85 | ~-25% |
 
+## Why cross-layer gather prefetch is infeasible
+
+The idea (overlap layer L's CPU gather with layer L-1's H2D/attention) is
+architecturally blocked, not merely hard. The per-layer dependency is:
+
+```
+h_{L-1} (layer L-1 output, incl. its MLP)
+  -> q_L = qkv_proj(h_{L-1})            (nanovllm/models/qwen3.py:85-98)
+     -> selector(q_L) -> block ids_L
+        -> gather_L -> H2D_L -> attention_L   (attention.py:97)
+```
+
+Layer L's gather target is decided by q_L, which is produced from layer L-1's
+full output. So while layer L-1 computes, layer L's rows are not yet known and
+cannot be prefetched. There is no independent work to overlap across layers.
+
+The only overlappable units are **within a layer**: K-gather vs V-gather
+(attempted in M20 as the K/V copy pipeline; no end-to-end gain), or the tiny
+sink/recent packing. H2D itself is a dead end within the layer: attention_L
+waits on H2D_L, which waits on gather_L, which waits on ids_L.
+
+The only "prefetch" that is even possible uses stale information (previous
+layer's q, or the previous token's blocks) and then corrects. M13 measured
+adjacent-layer/token block reuse at **32.2%**, so ~68% of prefetched rows
+would be wasted plus an extra H2D: expected negative. Therefore the way to
+reduce H2D is fewer bytes (int8, already done; int4 next), not overlap.
+
+
 ## Known limitations / open items
 
 - `k_scale` is fixed from the first chunk; later K values outside its range
