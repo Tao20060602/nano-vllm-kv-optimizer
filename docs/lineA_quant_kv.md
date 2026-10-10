@@ -55,11 +55,26 @@ unchanged; attention output error grows from 0.75% (bf16) to 2.4% (int8).
 This is synthetic data: only the engine run + 20-row quality screen decides
 whether int8 is acceptable.
 
-## Engine A/B (pending at time of writing)
+## Engine A/B (2026-10-10, 32K, Top-32, 3 fresh-process pairs)
 
-32K, Top-32, fresh-process ABBA baseline vs `--quant-history`, with CUDA
-stage events. Report: steady TPOT, H2D device span, generated-token equality,
-and the 20-row 8K multikey quality screen.
+| | steady TPOT | H2D device span | gather | selector |
+|---|---:|---:|---:|---:|
+| baseline | 113.5 | 47.9 | 26.1 | 32.9 |
+| int8 | 92.5 | 35.4 | 16.5 | 16.6 |
+| delta | **-21.0 (-18.5%)** | -12.5 | -9.6 | -16.3 |
+
+Paired per-run deltas: 21.7 / 22.4 / 18.9 ms. Generated token IDs are
+identical to baseline. The selector drop is a second-order effect: its
+per-layer `.cpu()` sync waits for the prior layer's H2D, so smaller H2D
+shortens the measured selector too. The H2D device span does not halve
+because the event span includes the (new) dequantize kernels.
+
+This recovers the Top-16 speed (~88 ms) **without reducing the block count**,
+i.e. without the quality loss that lowering Top-K causes.
+
+## Quality screen (20 regenerated 8K multikey rows)
+
+Pending: `bench_logs/lineA/quality_quant.py` baseline vs `--quant`.
 
 ## Known limitations / open items
 
