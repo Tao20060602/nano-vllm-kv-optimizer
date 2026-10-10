@@ -55,13 +55,15 @@ serving benchmark.
 | Selector CUDA graph (M19) | Opt-in, off by default | Corrected fresh-process timing direction was mixed; the interleaved result does not settle the effect. |
 | K/V copy pipeline (M20) | Opt-in, off by default | All three latest decode comparisons recorded higher pipeline times; they do not establish a general effect or prove a causal slowdown. |
 | Adaptive decode or reduced prefill Top-K (M16–M17) | Experimental, off by default | Adaptive decode did not show a TPOT gain. A small multi-key screen regressed when prefill K was lowered, so quality preservation is not established. |
+| Relative-threshold decode selection (Line A) | Opt-in, off by default | On 20 regenerated 8K multi-key rows, union mode with `a≈0.032` scored 13/20 versus 12/20 fixed Top-32 while selecting fewer tokens. Seven rows fail under every routing change tested (threshold, union, Q-window) even though the target block is in the decode selection, so those failures are not routing. |
 
 Experiment details: [M16](docs/m16_dynamic_topk_results.md),
 [M17](docs/m17_prefill_budget_results.md),
 [M18](docs/m18_nsight_gather_results.md),
 [M19](docs/m19_selector_graph_results.md),
-[M20](docs/m20_gather_results.md), and
-[M21](docs/m21_selector_static_mask_results.md).
+[M20](docs/m20_gather_results.md),
+[M21](docs/m21_selector_static_mask_results.md), and the
+[Line A routing diagnosis](docs/lineA_routing_diagnosis.md).
 
 For the full Chinese decision history—from prefix reuse and graph retrieval
 to the final optimizations, failed candidates, quality gaps and handoff—read
