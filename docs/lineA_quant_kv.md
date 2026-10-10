@@ -74,7 +74,25 @@ i.e. without the quality loss that lowering Top-K causes.
 
 ## Quality screen (20 regenerated 8K multikey rows)
 
-Pending: `bench_logs/lineA/quality_quant.py` baseline vs `--quant`.
+| arm | accuracy | rows |
+|---|---:|---|
+| baseline | 12/20 | - |
+| int8 | **12/20** | identical pass/fail on all 20 |
+
+Per-row answers match exactly (same 8 misses: 6258, 8786, 10273, 18422,
+9476, 9546, 7980, 5200). Within this screen, int8 does not change quality.
+
+## Net result
+
+int8 CPU-KV quantization: **-18.5% decode TPOT (113.5 -> 92.5 ms/token at
+32K, Top-32) with no observed quality change on the 20-row screen**. It
+recovers the Top-16 speed without the Top-16 quality loss. Bounded evidence:
+20 rows, one prompt distribution, 32-token greedy, repeated-text timing;
+not a general quality claim.
+
+Next: fuse the dequantize step into the attention kernel (remove the extra
+launches the event span exposes) and re-measure; then consider re-estimating
+`k_scale` over the full history.
 
 ## Known limitations / open items
 
