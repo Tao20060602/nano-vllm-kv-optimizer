@@ -26,6 +26,7 @@ import torch
 import torch.nn.functional as F
 
 from nanovllm.sparse.fused_select import fused_block_scores
+from nanovllm.sparse.fused_dequant import fused_dequant_pack
 
 
 def prefill_recent_slice(
@@ -122,6 +123,10 @@ class M12Config:
     fused_selector: bool = False
     # Opt-in int8 quantization of the CPU history (K per-channel, V per-block).
     quant_history: bool = False
+    # Fuse the dequantize step into one kernel (requires quant_history).
+    fused_dequant: bool = False
+    # Sort selected block ids before the CPU gather (sequential source access).
+    gather_sort: bool = False
     max_model_len: int = 131072
     num_heads: int = 32
     num_kv_heads: int = 8
@@ -154,6 +159,8 @@ class M12Config:
                 raise ValueError("decode_relative_max_blocks must be >= 1")
         if self.decode_query_window < 1:
             raise ValueError("decode_query_window must be >= 1")
+        if self.fused_dequant and not self.quant_history:
+            raise ValueError("fused_dequant requires quant_history")
 
 
 class M12LayerRuntime:
@@ -531,6 +538,8 @@ class M12LayerRuntime:
             else:
                 hist_ids, sel_info = self._gpu_select(
                     q_summary, budget=cfg.prefill_top_k_blocks)  # [K] CPU
+            if cfg.gather_sort and hist_ids.numel() > 1:
+                hist_ids = hist_ids.sort().values
 
         # 2. CPU batch gather selected historical blocks into pinned staging.
         Ksel = hist_ids.shape[0]
@@ -985,6 +994,9 @@ class M12LayerRuntime:
         if selector_events:
             selector_events[1].record()
 
+        if cfg.gather_sort and block_ids_cpu.numel() > 1:
+            block_ids_cpu = block_ids_cpu.sort().values
+
         if self.record_ids:
             self.ids_history.append(block_ids_cpu.tolist())
 
@@ -1033,12 +1045,20 @@ class M12LayerRuntime:
             with self._profile_range("dequant"):
                 self.hist_v_q[:sel_hist_tokens].copy_(
                     self.stage_v_q[:sel_hist_tokens], non_blocking=True)
-                pk = self.hist_k_q[:sel_hist_tokens].float() * self.k_scale
-                self.packed_k[:sel_hist_tokens].copy_(pk.to(self.packed_k.dtype))
-                row_scale = self.hist_v_scale[:K].repeat_interleave(B, dim=0)
-                pv = (self.hist_v_q[:sel_hist_tokens].float()
-                      * row_scale[:, :, None])
-                self.packed_v[:sel_hist_tokens].copy_(pv.to(self.packed_v.dtype))
+                if cfg.fused_dequant:
+                    fused_dequant_pack(
+                        self.hist_k_q[:sel_hist_tokens],
+                        self.hist_v_q[:sel_hist_tokens],
+                        self.k_scale, self.hist_v_scale[:K],
+                        self.packed_k[:sel_hist_tokens],
+                        self.packed_v[:sel_hist_tokens], B)
+                else:
+                    pk = self.hist_k_q[:sel_hist_tokens].float() * self.k_scale
+                    self.packed_k[:sel_hist_tokens].copy_(pk.to(self.packed_k.dtype))
+                    row_scale = self.hist_v_scale[:K].repeat_interleave(B, dim=0)
+                    pv = (self.hist_v_q[:sel_hist_tokens].float()
+                          * row_scale[:, :, None])
+                    self.packed_v[:sel_hist_tokens].copy_(pv.to(self.packed_v.dtype))
                 off = sel_hist_tokens
                 sink_len = min(cfg.sink_tokens, self.valid_len)
                 self.packed_k[off:off + sink_len].copy_(self.sink_k[:sink_len])

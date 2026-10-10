@@ -156,6 +156,8 @@ class ModelRunner:
                     decode_query_window=config.sparse_decode_query_window,
                     fused_selector=config.sparse_fused_selector,
                     quant_history=config.sparse_quant_history,
+                    fused_dequant=config.sparse_fused_dequant,
+                    gather_sort=config.sparse_gather_sort,
                     max_model_len=config.max_model_len,
                     num_heads=hf_config.num_attention_heads,
                     num_kv_heads=num_kv_heads,

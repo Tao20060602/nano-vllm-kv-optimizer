@@ -71,6 +71,14 @@ def main() -> None:
         help="store the CPU history as int8 (K per-channel, V per-block)",
     )
     parser.add_argument(
+        "--gather-sort", action="store_true",
+        help="sort selected block ids before the CPU gather",
+    )
+    parser.add_argument(
+        "--fused-dequant", action="store_true",
+        help="fuse int8 dequantize into one kernel (requires --quant-history)",
+    )
+    parser.add_argument(
         "--selector-abba", action="store_true",
         help=("within one run, warm four graph decode steps then alternate "
               "eager/graph/graph/eager for steady decode timing"),
@@ -168,6 +176,8 @@ def main() -> None:
         sparse_selector_static_mask=args.selector_static_mask,
         sparse_fused_selector=args.fused_selector,
         sparse_quant_history=args.quant_history,
+        sparse_gather_sort=args.gather_sort,
+        sparse_fused_dequant=args.fused_dequant,
         sparse_check_finite_outputs=args.check_finite_output,
         rope_scaling_override=YARN,
     )
@@ -396,6 +406,8 @@ def main() -> None:
                 "selector_static_mask": args.selector_static_mask,
                 "fused_selector": args.fused_selector,
                 "quant_history": args.quant_history,
+                "gather_sort": args.gather_sort,
+                "fused_dequant": args.fused_dequant,
                 "selector_abba": args.selector_abba,
                 "record_selected_ids": args.record_selected_ids,
                 "check_finite_output": args.check_finite_output,

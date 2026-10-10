@@ -52,6 +52,10 @@ class Config:
     sparse_fused_selector: bool = False
     # Opt-in int8 quantization of the CPU history (K per-channel, V per-block).
     sparse_quant_history: bool = False
+    # Fuse the dequantize step into one kernel (requires quant history).
+    sparse_fused_dequant: bool = False
+    # Sort selected block ids before the CPU gather (sequential source access).
+    sparse_gather_sort: bool = False
     # Fraction of normalized top-k representative score weight to retain.
     # This is a routing heuristic, not measured attention mass.
     sparse_dynamic_top_k_mass: float = 0.90
