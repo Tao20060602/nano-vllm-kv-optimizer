@@ -48,6 +48,8 @@ class Config:
     # Decode Q-window routing: average the last W decode queries for routing
     # only. 1 = off (use the current single query).
     sparse_decode_query_window: int = 1
+    # Fused Triton block-scoring kernel for the flat sparse selector path.
+    sparse_fused_selector: bool = False
     # Fraction of normalized top-k representative score weight to retain.
     # This is a routing heuristic, not measured attention mass.
     sparse_dynamic_top_k_mass: float = 0.90

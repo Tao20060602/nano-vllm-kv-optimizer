@@ -199,3 +199,34 @@ Findings:
 `_gpu_select` now reports `enqueue_ms` (CPU dispatch of score+topk) and
 `d2h_ms` (blocking `.cpu()`), summed across layers in `layer.timings`
 (`selector_enqueue_ms`). All opt-in/observational; defaults unchanged.
+
+## Selector optimizations do NOT move wall time (2026-10-10)
+
+Three independent ways to cut selector CPU cost, all ABBA/fresh-process on
+32K, all correct (identical generated tokens):
+
+| change | selector ms | steady decode ms | verdict |
+|---|---:|---:|---|
+| baseline | 33.0 | 114.2 | - |
+| CUDA graph (`--selector-cuda-graph`) | 30.4 | ~109 | ~5 ms, noise-level |
+| static mask (`--selector-static-mask`) | 29.8 | ~110 | ~4 ms, noise-level |
+| fused Triton selector (`--fused-selector`) | 27.9 | 115.0 | 0 (paired -1.3/+2.3/-3.4) |
+| **top-k 32 -> 16** | 17.0 | **88.3** | **-34 ms, real** |
+
+Interpretation: the selector's CPU time is **not on the critical path** - it
+is hidden behind the async GPU work of the previous layer (attention + MLP
++ H2D). Reducing selector CPU alone buys nothing end to end. Lowering
+top-k helps because it simultaneously cuts the **H2D device time** (288 ->
+144 MiB), which IS on the critical path. The dominant decode cost is the
+GPU-side chain, chiefly the ~49 ms/token of H2D serialized through the
+per-layer `.cpu()` sync. Next lever: H2D (reduce bytes or overlap), not
+selector. The fused kernel is retained (correct, clean, useful if the CPU
+side ever becomes the constraint) but is NOT a decode speedup.
+
+## Fused selector (Triton)
+
+`nanovllm/sparse/fused_select.py` replaces the eager
+`einsum + 3x amax` with one Triton kernel (one program per block, GQA head
+mapping via pointer arithmetic, fp32 accumulation). Numerics match eager to
+max abs diff 7.6e-06; microbench 85 us -> 23 us per call (3.5x). Engine
+option `sparse_fused_selector` / `M12Config.fused_selector`, default off.

@@ -25,6 +25,8 @@ import math
 import torch
 import torch.nn.functional as F
 
+from nanovllm.sparse.fused_select import fused_block_scores
+
 
 def prefill_recent_slice(
     valid_len: int, sink_tokens: int, recent_tokens: int,
@@ -116,6 +118,8 @@ class M12Config:
     # *routing only* (attention still uses the current single q), so the
     # routing query resembles prefill mean-Q summaries. 1 = off.
     decode_query_window: int = 1
+    # Fused Triton block-scoring kernel for the flat selector path.
+    fused_selector: bool = False
     max_model_len: int = 131072
     num_heads: int = 32
     num_kv_heads: int = 8
@@ -729,11 +733,15 @@ class M12LayerRuntime:
         if use_graph and cfg.selector_cuda_graph:
             topk_scores, topk_ids = self._graph_select(q, nblocks, k)
         else:
-            q_g = q.view(nq, Hkv, self.groups_per_kv, D)
-            scores = torch.einsum(
-                "nhgd,hbrd->nhgbr", q_g.float(), self.reps_gpu[:, :nblocks].float())
-            scores = scores.amax(dim=-1).amax(dim=2).amax(dim=0)
-            global_scores = scores.amax(dim=0)
+            if cfg.fused_selector:
+                global_scores = fused_block_scores(
+                    q, self.reps_gpu, nblocks, Hq)
+            else:
+                q_g = q.view(nq, Hkv, self.groups_per_kv, D)
+                scores = torch.einsum(
+                    "nhgd,hbrd->nhgbr", q_g.float(), self.reps_gpu[:, :nblocks].float())
+                scores = scores.amax(dim=-1).amax(dim=2).amax(dim=0)
+                global_scores = scores.amax(dim=0)
             if static_mask:
                 protected = self._get_selector_static_mask(
                     protected_ids, global_scores.device)

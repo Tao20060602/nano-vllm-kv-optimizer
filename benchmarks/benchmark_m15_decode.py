@@ -63,6 +63,10 @@ def main() -> None:
         help="cache valid protected-block indices for eager decode selection",
     )
     parser.add_argument(
+        "--fused-selector", action="store_true",
+        help="use the fused Triton block-scoring kernel for the flat selector",
+    )
+    parser.add_argument(
         "--selector-abba", action="store_true",
         help=("within one run, warm four graph decode steps then alternate "
               "eager/graph/graph/eager for steady decode timing"),
@@ -158,6 +162,7 @@ def main() -> None:
         sparse_decode_kv_pipeline=args.kv_pipeline,
         sparse_selector_cuda_graph=args.selector_cuda_graph,
         sparse_selector_static_mask=args.selector_static_mask,
+        sparse_fused_selector=args.fused_selector,
         sparse_check_finite_outputs=args.check_finite_output,
         rope_scaling_override=YARN,
     )
@@ -384,6 +389,7 @@ def main() -> None:
                 "gather_abba": args.gather_abba,
                 "selector_cuda_graph": args.selector_cuda_graph,
                 "selector_static_mask": args.selector_static_mask,
+                "fused_selector": args.fused_selector,
                 "selector_abba": args.selector_abba,
                 "record_selected_ids": args.record_selected_ids,
                 "check_finite_output": args.check_finite_output,
