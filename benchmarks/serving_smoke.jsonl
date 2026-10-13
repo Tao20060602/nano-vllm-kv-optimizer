@@ -1,0 +1,4 @@
+{"id":"short-1","messages":[{"role":"user","content":"用一句话介绍 KV cache。"}],"max_tokens":32,"temperature":0.0}
+{"id":"short-2","messages":[{"role":"user","content":"用一句话解释 prefill 和 decode 的区别。"}],"max_tokens":32,"temperature":0.0}
+{"id":"short-3","messages":[{"role":"user","content":"用一句话解释为什么长上下文需要更多内存。"}],"max_tokens":32,"temperature":0.0}
+{"id":"short-4","messages":[{"role":"user","content":"用一句话解释推理服务中的排队延迟。"}],"max_tokens":32,"temperature":0.0}

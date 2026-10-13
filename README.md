@@ -11,6 +11,15 @@ representatives plus protected sink/recent K/V, and gathers selected history
 for decode. It is a teaching and measurement project, not a production serving
 stack.
 
+## Serving foundation (2026-10-13)
+
+An opt-in real-engine HTTP/SSE service now provides bounded FIFO admission,
+token usage, cancellation/deadlines, health/metrics, and reproducible HTTP
+benchmarks. M12 still executes **one sequence at a time**; accepting concurrent
+clients does not enable sparse continuous batching. CPU contract and local HTTP
+tests do not establish GPU correctness or performance. See the
+[service design, startup and validation guide](docs/SERVING_FOUNDATION.md).
+
 ## Fixed-policy TTFT optimization (native Linux, 2026-10-07)
 
 A direct blocking GPU-to-CPU history copy removes two intermediate host copies
