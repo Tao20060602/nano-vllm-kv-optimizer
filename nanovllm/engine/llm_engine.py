@@ -61,6 +61,29 @@ class LLMEngine:
             seq.cpu_cache_handles = lookup.cpu_handles[:max_reusable_blocks]
             seq.cpu_lookup_time_ms = timer.elapsed_ms()
         self.scheduler.add(seq)
+        return seq
+
+    def cancel_request(self, seq_id: int) -> bool:
+        """Cancel a queued/running sequence on the engine owner thread.
+
+        Sparse runtime state is shared, so canceling its only active request
+        clears that state before another request can enter the engine.
+        """
+        from nanovllm.engine.sequence import SequenceStatus
+
+        for queue in (self.scheduler.waiting, self.scheduler.running):
+            for seq in list(queue):
+                if seq.seq_id != seq_id:
+                    continue
+                queue.remove(seq)
+                seq.status = SequenceStatus.FINISHED
+                if self.scheduler.sparse:
+                    if seq.num_cached_tokens:
+                        self.model_runner.call("sparse_reset")
+                elif seq.block_table:
+                    self.scheduler.block_manager.deallocate(seq)
+                return True
+        return False
 
     def step(self):
         timer = StageTimer() if self.metrics is not None else None
