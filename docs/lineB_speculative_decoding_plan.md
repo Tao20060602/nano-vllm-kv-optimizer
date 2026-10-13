@@ -54,6 +54,49 @@ is low, the whole idea is dead and no code should be written.
 4. Sweep K and N; measure acceptance, TokensPerPass, wall ms/token, and
    bit-identical output vs baseline.
 
+## Findings that changed the design (2026-10-13)
+
+The acceptance probe passed: Qwen3-0.6B teacher-forced agreement with the
+4B target is **70.8%** on 8K RULER prompts -> ~2.1 accepted tokens per pass
+at K=4, ~2.8 at K=8.
+
+But a second measurement killed the **lossless** variant. Consecutive
+decode tokens only reuse **32.6%** of their selected blocks (matches M13),
+so a lossless per-query verification would need the **union** of the K
+selections for its transfer:
+
+| K | union blocks | vs single (32) |
+|---|---:|---:|
+| 1 | 32.0 | 1.00x |
+| 2 | 53.6 | 1.68x |
+| 4 | 85.3 | 2.67x |
+| 8 | 127.2 | 3.98x |
+
+At K=4 the union is 85 blocks for ~2.1 tokens = 40 blocks/token vs 32 for a
+single step: **the transfer would grow ~1.3x, not shrink.** The amortization
+premise fails because the top-32 set reshuffles each step (the attention
+*output* is robust, the selected *set* is not).
+
+**Decision: implement the approximate variant** - all K verification queries
+share ONE selection (max-reduce over their scores), so transfer stays ~32
+blocks per pass -> ~15 blocks/token at K=4. This is no longer bit-identical
+to non-speculative sparse decode and must pass the same kind of quality
+screen int8 did.
+
+## Implementation progress
+
+- Step 1 DONE: `M12LayerRuntime.verify_tokens` (shared selection, packs
+  `[selected_hist | sink | previous recent | chunk(Tq, causal)]`, one exact
+  attention) and `commit_verified(n)` / `rollback_verified()`.
+  Correctness test `bench_logs/lineB/test_verify.py`: Tq=1 verify equals the
+  single-token `decode` (block ids and valid_len identical; output differs by
+  0.003 fp noise because decode uses the batched path and verify the per-head
+  causal path). Tq=3 + commit(2) behaves.
+- Step 2 TODO: draft runner (Qwen3-0.6B dense, bounded KV window, cache
+  rollback on rejection).
+- Step 3 TODO: speculative loop (greedy accept prefix + bonus; commit/rollback).
+- Step 4 TODO: quality screen (290-row RULER set) + TPOT/acceptance sweep.
+
 ## Risks / open points
 
 - **Rollback**: `decode_multi` appends K tokens to the target CPU history and

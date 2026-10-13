@@ -264,6 +264,10 @@ class M12LayerRuntime:
         # target-block scoring (default off, CPU clones, no behavior change)
         self.record_q = False
         self.q_history: list[torch.Tensor] = []
+        # Speculative verification state (see verify_tokens/commit_verified).
+        self._pending_k = None
+        self._pending_v = None
+        self.last_verify_block_ids: torch.Tensor | None = None
         # Rolling decode-query buffer for Q-window routing (GPU, latest last).
         self._q_window: list[torch.Tensor] = []
         self.use_index_select = cfg.use_index_select
@@ -327,6 +331,9 @@ class M12LayerRuntime:
         self._q_window.clear()
         # Recalibrate the per-channel K scale for the next sequence.
         self.k_scale = None
+        self._pending_k = None
+        self._pending_v = None
+        self.last_verify_block_ids = None
         self._clear_selector_graph()
         self._clear_selector_static_mask()
         self.selector_graph_setup_ms = 0.0
@@ -633,6 +640,137 @@ class M12LayerRuntime:
         self.last_prefill_block_ids = hist_ids.clone()
         self.last_block_ids = hist_ids
         return o
+
+    # ------------------------------------------------------------------
+    # Speculative verification (shared block selection, deferred commit)
+    # ------------------------------------------------------------------
+    def verify_tokens(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor,
+                      device: torch.device) -> torch.Tensor:
+        """One verification pass over Tq new tokens; does NOT commit.
+
+        q,k,v: [Tq, Hq/Hkv, D] GPU post-RoPE.  All Tq queries share ONE block
+        selection (max-reduce over them, exactly what ``_gpu_select`` does for
+        Nq>1).  Attention packs
+        [selected_hist | sink | previous recent | chunk(Tq, causal)].
+        Returns o [Tq, Hq, D].  Call ``commit_verified(n)`` with the accepted
+        prefix length, or ``rollback_verified()`` to discard.
+        """
+        cfg = self.cfg
+        B = cfg.block_size
+        Tq, Hkv, D = k.shape
+        assert Tq >= 1, "verify needs at least one token"
+        assert self.prefill_len > 0, "verify requires a complete prefill"
+        assert not (self.quant_history and cfg.prefill_adapter is not None), \
+            "quant_history is incompatible with the segmented prefill adapter"
+
+        # 1. Shared selection over the frozen history (max over the Tq queries).
+        with self._profile_range("verify_selector"):
+            hist_ids, sel_info = self._gpu_select(q)
+
+        # 2. CPU gather into pinned staging (same as prefill_chunk).
+        Ksel = hist_ids.shape[0]
+        sel_hist_tokens = Ksel * B
+        t_gather = perf_counter()
+        with self._profile_range("verify_cpu_gather"):
+            if self.quant_history:
+                flat_k = self.k_cpu[:self.cpu_blocks_cap].view(-1, Hkv, D)
+                flat_v = self.v_cpu[:self.cpu_blocks_cap].view(-1, Hkv, D)
+                tok_idx = (hist_ids.view(-1, 1) * B
+                           + torch.arange(B, dtype=torch.long)).reshape(-1)
+                torch.index_select(flat_k, 0, tok_idx,
+                                   out=self.stage_k_q[:sel_hist_tokens])
+                torch.index_select(flat_v, 0, tok_idx,
+                                   out=self.stage_v_q[:sel_hist_tokens])
+                self.stage_v_scale[:Ksel].copy_(self.v_scale_cpu[hist_ids])
+            elif self.use_index_select:
+                flat_k = self.k_cpu[:self.cpu_blocks_cap].view(-1, Hkv, D)
+                flat_v = self.v_cpu[:self.cpu_blocks_cap].view(-1, Hkv, D)
+                tok_idx = (hist_ids.view(-1, 1) * B
+                           + torch.arange(B, dtype=torch.long)).reshape(-1)
+                torch.index_select(flat_k, 0, tok_idx, out=self.stage_k[:sel_hist_tokens])
+                torch.index_select(flat_v, 0, tok_idx, out=self.stage_v[:sel_hist_tokens])
+            else:
+                sel_k = self.k_cpu[hist_ids].reshape(sel_hist_tokens, Hkv, D)
+                sel_v = self.v_cpu[hist_ids].reshape(sel_hist_tokens, Hkv, D)
+                self.stage_k[:sel_hist_tokens].copy_(sel_k)
+                self.stage_v[:sel_hist_tokens].copy_(sel_v)
+        self.prefill_cpu_gather_ms += (perf_counter() - t_gather) * 1000.0
+
+        # 3. Pack [selected_hist | sink | previous recent | chunk(causal)] and
+        #    run one exact attention over it.
+        with self._profile_range("verify_h2d_pack"):
+            sink_len = min(cfg.sink_tokens, self.valid_len)
+            _, recent_offset, recent_len = prefill_recent_slice(
+                self.valid_len, cfg.sink_tokens, cfg.recent_tokens)
+            total = sel_hist_tokens + sink_len + recent_len + Tq
+            k_pack = torch.empty(total, Hkv, D, dtype=k.dtype, device=device)
+            v_pack = torch.empty(total, Hkv, D, dtype=v.dtype, device=device)
+            off = 0
+            if self.quant_history:
+                self.hist_k_q[:sel_hist_tokens].copy_(self.stage_k_q[:sel_hist_tokens])
+                self.hist_v_q[:sel_hist_tokens].copy_(self.stage_v_q[:sel_hist_tokens])
+                self.hist_v_scale[:Ksel].copy_(self.stage_v_scale[:Ksel])
+                k_pack[off:off + sel_hist_tokens] = (
+                    self.hist_k_q[:sel_hist_tokens].float() * self.k_scale).to(k.dtype)
+                row_scale = self.hist_v_scale[:Ksel].repeat_interleave(B, dim=0)
+                v_pack[off:off + sel_hist_tokens] = (
+                    self.hist_v_q[:sel_hist_tokens].float()
+                    * row_scale[:, :, None]).to(v.dtype)
+            else:
+                k_pack[off:off + sel_hist_tokens] = self.stage_k[:sel_hist_tokens].to(device)
+                v_pack[off:off + sel_hist_tokens] = self.stage_v[:sel_hist_tokens].to(device)
+            off += sel_hist_tokens
+            k_pack[off:off + sink_len] = self.sink_k[:sink_len]
+            v_pack[off:off + sink_len] = self.sink_v[:sink_len]
+            off += sink_len
+            if recent_len:
+                recent_end = recent_offset + recent_len
+                k_pack[off:off + recent_len] = self.recent_k[recent_offset:recent_end]
+                v_pack[off:off + recent_len] = self.recent_v[recent_offset:recent_end]
+                off += recent_len
+            k_pack[off:off + Tq] = k
+            v_pack[off:off + Tq] = v
+
+        with self._profile_range("verify_attention"):
+            o = self._prefill_attention(q, k_pack, v_pack, causal_from=off)
+
+        self._pending_k = k
+        self._pending_v = v
+        self.last_verify_block_ids = hist_ids.clone()
+        self.last_block_ids = hist_ids
+        return o
+
+    def commit_verified(self, n: int) -> None:
+        """Append the first n pending verified tokens to the recent window.
+
+        The CPU history holds prefill tokens only (decode appends are never
+        gathered; the selection is frozen), so only the GPU recent window and
+        ``valid_len`` change here.
+        """
+        if n <= 0:
+            self._pending_k = self._pending_v = None
+            return
+        k, v = self._pending_k[:n], self._pending_v[:n]
+        T = int(n)
+        R = self.cfg.recent_tokens
+        old_len = min(R, self.valid_len)
+        new_len = min(R, self.valid_len + T)
+        if T >= R:
+            self.recent_k[:R].copy_(k[-R:])
+            self.recent_v[:R].copy_(v[-R:])
+        else:
+            carry = new_len - T
+            if carry > 0:
+                self.recent_k[:carry].copy_(self.recent_k[old_len - carry:old_len].clone())
+                self.recent_v[:carry].copy_(self.recent_v[old_len - carry:old_len].clone())
+            self.recent_k[carry:carry + T].copy_(k)
+            self.recent_v[carry:carry + T].copy_(v)
+        self.valid_len += T
+        self._pending_k = self._pending_v = None
+
+    def rollback_verified(self) -> None:
+        """Discard a verification pass without committing anything."""
+        self._pending_k = self._pending_v = None
 
     def _prefill_attention(
         self,
