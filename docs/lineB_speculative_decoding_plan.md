@@ -122,6 +122,47 @@ Generated token IDs were **identical** to the baseline on this row, so the
 shared-selection approximation did not change the answer here (1 row only;
 the 290-row quality screen is still required).
 
+## Lossless verification (2026-10-20)
+
+Because the shared selection is approximate (quality screen below), a
+lossless variant was added:
+
+- `_gpu_select_per_query`: per-query top-k over the same frozen history;
+  the union is gathered once (`verify_union_blocks` sizes the buffers).
+- `_fused_attention(attn_mask=...)`: per-query mask over the union so each
+  query attends exactly to its own selected blocks + sink/recent + causal
+  chunk. This reproduces non-speculative sparse decode exactly.
+
+Correctness (synthetic runtime, `test_verify.py`):
+- union equals the union of three sequential single-token selections
+  (51 blocks); per-row output diff <= 0.015 (fp reduction order only).
+- End-to-end 8K generation: token IDs **identical** to baseline.
+
+Performance (8K, K=4, window 8192):
+
+| arm | ms/token | note |
+|---|---:|---|
+| baseline | 131.3 | |
+| lossless spec | 138.8 (0.95x) | verify 201 ms/round, draft 193 ms/round |
+
+The lossless verify costs more than the shared one (union transfer), and the
+draft still dominates. Break-even needs a draft round <= ~80 ms (currently
+193 ms). With a 50 ms draft round this would be ~1.5x.
+
+## Quality screen: approximate (shared) mode (2026-10-20, 290 rows)
+
+| task | base % | spec % | delta | token-eq |
+|---|---:|---:|---:|---:|
+| 8k multikey (100) | 77.0 | 76.0 | -1.0 | 22 |
+| 8k single (60) | 100.0 | 100.0 | 0.0 | 35 |
+| 8k vt (60) | 85.7 | 83.7 | -2.0 | 19 |
+| 16k multikey (40) | 27.5 | 27.5 | 0.0 | 8 |
+| 16k single (30) | 100.0 | 100.0 | 0.0 | 14 |
+| total (290) | 79.1 | 78.4 | **-0.75** | 98 (33.8%) |
+
+Score changed on 20 rows: 7 improved, 13 worsened. The shared selection is
+**not quality-neutral** (unlike int8). Hence the lossless variant above.
+
 ## Risks / open points
 
 - **Draft speed is the whole game.** Until the draft step drops well below

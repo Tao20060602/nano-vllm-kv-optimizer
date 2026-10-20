@@ -156,6 +156,7 @@ class ModelRunner:
                     decode_query_window=config.sparse_decode_query_window,
                     fused_selector=config.sparse_fused_selector,
                     quant_history=config.sparse_quant_history,
+                    verify_union_blocks=config.sparse_verify_union_blocks,
                     fused_dequant=config.sparse_fused_dequant,
                     gather_sort=config.sparse_gather_sort,
                     max_model_len=config.max_model_len,

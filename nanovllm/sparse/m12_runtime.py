@@ -123,6 +123,9 @@ class M12Config:
     fused_selector: bool = False
     # Opt-in int8 quantization of the CPU history (K per-channel, V per-block).
     quant_history: bool = False
+    # Extra block budget for lossless verification (union over Tq queries).
+    # 0 keeps the buffers sized by top_k / the relative cap.
+    verify_union_blocks: int = 0
     # Fuse the dequantize step into one kernel (requires quant_history).
     fused_dequant: bool = False
     # Sort selected block ids before the CPU gather (sequential source access).
@@ -203,6 +206,8 @@ class M12LayerRuntime:
         sel_budget = cfg.top_k_blocks
         if cfg.decode_relative_a is not None:
             sel_budget = max(sel_budget, cfg.decode_relative_max_blocks)
+        if cfg.verify_union_blocks > 0:
+            sel_budget = max(sel_budget, cfg.verify_union_blocks)
         self.max_selected_tokens = sel_budget * B
         self.packed_total = (
             self.max_selected_tokens + cfg.sink_tokens + cfg.recent_tokens
@@ -270,6 +275,8 @@ class M12LayerRuntime:
         self.last_verify_block_ids: torch.Tensor | None = None
         # Set by ModelRunner.run_verify; Attention.forward routes to verify_tokens.
         self.verify_mode = False
+        # Lossless verification: per-query selection + union + per-query mask.
+        self.verify_lossless = False
         # Rolling decode-query buffer for Q-window routing (GPU, latest last).
         self._q_window: list[torch.Tensor] = []
         self.use_index_select = cfg.use_index_select
@@ -336,6 +343,7 @@ class M12LayerRuntime:
         self._pending_k = None
         self._pending_v = None
         self.last_verify_block_ids = None
+        self.verify_lossless = False
         self._clear_selector_graph()
         self._clear_selector_static_mask()
         self.selector_graph_setup_ms = 0.0
@@ -665,9 +673,14 @@ class M12LayerRuntime:
         assert not (self.quant_history and cfg.prefill_adapter is not None), \
             "quant_history is incompatible with the segmented prefill adapter"
 
-        # 1. Shared selection over the frozen history (max over the Tq queries).
+        # 1. Selection over the frozen history.
+        #    lossless: per-query top-k, union gathered, per-query mask.
+        #    approximate: one shared set (max over queries).
         with self._profile_range("verify_selector"):
-            hist_ids, sel_info = self._gpu_select(q)
+            if self.verify_lossless:
+                hist_ids, allowed = self._gpu_select_per_query(q, cfg.top_k_blocks)
+            else:
+                hist_ids, sel_info = self._gpu_select(q)
 
         # 2. CPU gather into pinned staging (same as prefill_chunk).
         Ksel = hist_ids.shape[0]
@@ -734,7 +747,14 @@ class M12LayerRuntime:
             v_pack[off:off + Tq] = v
 
         with self._profile_range("verify_attention"):
-            o = self._prefill_attention(q, k_pack, v_pack, causal_from=off)
+            if self.verify_lossless:
+                attn_mask = torch.zeros(Tq, total, dtype=torch.bool, device=device)
+                attn_mask[:, :sel_hist_tokens] = ~allowed.repeat_interleave(B, dim=1)
+                o = self._fused_attention(q, k_pack, v_pack,
+                                          hist_len=sel_hist_tokens, sink_len=sink_len,
+                                          causal_from=off, attn_mask=attn_mask)
+            else:
+                o = self._prefill_attention(q, k_pack, v_pack, causal_from=off)
 
         self._pending_k = k
         self._pending_v = v
@@ -818,6 +838,7 @@ class M12LayerRuntime:
         hist_len: int,
         sink_len: int,
         causal_from: int,         # start index of the causal (current-chunk) region
+        attn_mask: torch.Tensor | None = None,   # [Tq, S] bool, True = disallowed
     ) -> torch.Tensor:
         cfg = self.cfg
         Tq = q.shape[0]
@@ -832,7 +853,7 @@ class M12LayerRuntime:
         v_f = v.float()
 
         # Decode / no-causal fast path: batch all KV heads in one op (no mask).
-        if causal_from >= S:
+        if attn_mask is None and causal_from >= S:
             qg = q_f.view(Tq, Hkv, G, D)                        # [Tq,Hkv,G,D]
             scores = torch.einsum("thgd,shd->thgs", qg, k_f) * cfg.scale  # [Tq,Hkv,G,S]
             attn = F.softmax(scores, dim=-1)
@@ -841,11 +862,12 @@ class M12LayerRuntime:
 
         # causal mask for the chunk region: per-query-row [Tq, S]
         # query t (chunk-relative position t) sees history + chunk keys <= t
-        mask = torch.zeros(Tq, S, dtype=torch.bool, device=q.device)
+        mask = (attn_mask if attn_mask is not None else
+                torch.zeros(Tq, S, dtype=torch.bool, device=q.device))
         if causal_from < S:
             cols = torch.arange(S, device=q.device).unsqueeze(0)      # [1, S]
             rows = (torch.arange(Tq, device=q.device) + causal_from + 1).unsqueeze(1)  # [Tq,1]
-            mask = (cols >= rows) & (cols >= causal_from)             # [Tq, S]
+            mask = mask | ((cols >= rows) & (cols >= causal_from))    # [Tq, S]
 
         qg = q_f.view(Tq, Hkv, G, D)        # [Tq, Hkv, G, D]
         out = torch.empty(Tq, Hq, D, dtype=q_f.dtype, device=q.device)
@@ -1019,6 +1041,38 @@ class M12LayerRuntime:
             "n_candidates": k,
             "n_query_summaries": nq,
         }
+
+    def _gpu_select_per_query(self, q: torch.Tensor, k: int):
+        """Per-query top-k block selection for lossless verification.
+
+        Returns ``(union_ids_cpu_sorted [U], allowed [Tq, U] bool GPU)`` where
+        ``allowed[t, j]`` says query t may attend to union block j.
+        """
+        cfg = self.cfg
+        Hq, Hkv, D = cfg.num_heads, cfg.num_kv_heads, cfg.head_dim
+        if q.ndim == 2:
+            q = q.unsqueeze(0)
+        Tq = q.shape[0]
+        nblocks = self.nblocks_filled
+        n_prot = len([p for p in self.protected_blocks if p < nblocks])
+        kk = min(int(k), max(1, nblocks - n_prot))
+        q_g = q.view(Tq, Hkv, self.groups_per_kv, D)
+        scores = torch.einsum(
+            "nhgd,hbrd->nhgbr", q_g.float(), self.reps_gpu[:, :nblocks].float())
+        scores = scores.amax(dim=-1).amax(dim=2)          # [Tq, Hkv, B]
+        gs = scores.amax(dim=1)                           # [Tq, B]
+        if self.protected_blocks:
+            prot = torch.tensor(sorted(self.protected_blocks),
+                                dtype=torch.long, device=gs.device)
+            prot = prot[prot < nblocks]
+            if prot.numel() > 0:
+                gs[:, prot] = float("-inf")
+        top = gs.topk(kk, dim=1).indices                  # [Tq, kk]
+        union = torch.unique(top.flatten())               # sorted
+        pos = torch.searchsorted(union, top.flatten()).reshape(Tq, kk)
+        allowed = torch.zeros(Tq, union.numel(), dtype=torch.bool, device=q.device)
+        allowed.scatter_(1, pos, True)
+        return union.cpu(), allowed
 
     def diagnose_target_margin(self, q: torch.Tensor, target_block: int) -> dict:
         """Post-hoc score margin of one block under default selector scoring.
