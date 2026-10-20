@@ -31,6 +31,8 @@ class WindowedDraftRunner:
         self.cache = DynamicCache()
         self.n_seen = 0          # absolute tokens fed
         self._last_k = 0         # proposals produced by the last propose()
+        self.profile_steps = False
+        self.step_ms: list[float] = []
 
     # -- internals ------------------------------------------------------
     def _cache_len(self) -> int:
@@ -48,13 +50,18 @@ class WindowedDraftRunner:
 
     @torch.no_grad()
     def _step_tensor(self, nxt: torch.Tensor) -> torch.Tensor:
+        import time as _time
+        t0 = _time.perf_counter()
         pos = torch.tensor([self.n_seen], device=self.device)
         out = self.model(nxt, past_key_values=self.cache, use_cache=True,
                          cache_position=pos)
         self.cache = out.past_key_values
         self.n_seen += 1
         self._trim()
-        return out.logits[:, -1, :]
+        logits = out.logits[:, -1, :]
+        if self.profile_steps:
+            self.step_ms.append((_time.perf_counter() - t0) * 1000.0)
+        return logits
 
     # -- public ---------------------------------------------------------
     @torch.no_grad()

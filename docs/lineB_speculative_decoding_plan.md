@@ -163,6 +163,31 @@ draft still dominates. Break-even needs a draft round <= ~80 ms (currently
 Score changed on 20 rows: 7 improved, 13 worsened. The shared selection is
 **not quality-neutral** (unlike int8). Hence the lossless variant above.
 
+## Round profile (2026-10-20, 8K, K=4, shared mode)
+
+Stable round (~280 ms total, ~2 tokens):
+
+| segment | ms | note |
+|---|---:|---|
+| draft (5 steps) | 129 | 25-26 ms/step |
+| verify selector | 16-18 | |
+| verify gather | 28-30 | CPU |
+| verify pack (H2D + dequant) | 56-63 | transfer |
+| verify attention | 7 | |
+| verify model rest (qkv/MLP/lm_head) | 40-47 | |
+
+**No async opportunity exists.** The per-layer chain is
+`qkv -> rope -> selector -> gather -> H2D -> attention -> MLP`, and the next
+layer's selector needs the previous layer's full output; draft and verify are
+strictly ordered too. Every stage depends on the previous one.
+
+The draft's 25 ms/step is **launch-overhead bound**: the 0.6B weights are
+~1.2 GB (≈3 ms at HBM speed), 8K attention ≈1 ms, lm_head ≈0.6 ms, so the
+theoretical floor is ~5 ms/step. 28 layers x ~5 kernels ≈ 150 launches/step
+at WSL launch cost explains the gap. CUDA-graph capture of one draft step is
+the lever: ~5-8 ms/step would put the draft at 30-40 ms/round and the total
+at ~1.3x (lossless ~1.15-1.2x).
+
 ## Risks / open points
 
 - **Draft speed is the whole game.** Until the draft step drops well below

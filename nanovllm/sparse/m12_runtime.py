@@ -676,11 +676,13 @@ class M12LayerRuntime:
         # 1. Selection over the frozen history.
         #    lossless: per-query top-k, union gathered, per-query mask.
         #    approximate: one shared set (max over queries).
+        _t0 = perf_counter()
         with self._profile_range("verify_selector"):
             if self.verify_lossless:
                 hist_ids, allowed = self._gpu_select_per_query(q, cfg.top_k_blocks)
             else:
                 hist_ids, sel_info = self._gpu_select(q)
+        _t_sel = perf_counter()
 
         # 2. CPU gather into pinned staging (same as prefill_chunk).
         Ksel = hist_ids.shape[0]
@@ -710,6 +712,7 @@ class M12LayerRuntime:
                 self.stage_k[:sel_hist_tokens].copy_(sel_k)
                 self.stage_v[:sel_hist_tokens].copy_(sel_v)
         self.prefill_cpu_gather_ms += (perf_counter() - t_gather) * 1000.0
+        _t_gather = perf_counter()
 
         # 3. Pack [selected_hist | sink | previous recent | chunk(causal)] and
         #    run one exact attention over it.
@@ -746,6 +749,7 @@ class M12LayerRuntime:
             k_pack[off:off + Tq] = k
             v_pack[off:off + Tq] = v
 
+        _t_pack = perf_counter()
         with self._profile_range("verify_attention"):
             if self.verify_lossless:
                 attn_mask = torch.zeros(Tq, total, dtype=torch.bool, device=device)
@@ -756,6 +760,15 @@ class M12LayerRuntime:
             else:
                 o = self._prefill_attention(q, k_pack, v_pack, causal_from=off)
 
+        _t_attn = perf_counter()
+        self.last_verify_timings = {
+            "selector_ms": (_t_sel - _t0) * 1000.0,
+            "gather_ms": (_t_gather - _t_sel) * 1000.0,
+            "pack_ms": (_t_pack - _t_gather) * 1000.0,
+            "attention_ms": (_t_attn - _t_pack) * 1000.0,
+            "tokens": int(Tq),
+            "blocks": int(Ksel),
+        }
         self._pending_k = k
         self._pending_v = v
         self.last_verify_block_ids = hist_ids.clone()
