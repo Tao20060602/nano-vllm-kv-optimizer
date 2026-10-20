@@ -473,6 +473,38 @@ class ModelRunner:
             graph.replay()
             return self.model.compute_logits(graph_vars["outputs"][:bs])
 
+    @torch.inference_mode()
+    def run_verify(self, seq, tokens: list[int]):
+        """One sparse verification pass over Tq = len(tokens) query tokens.
+
+        ``tokens`` are the queries at absolute positions
+        ``len(seq)-1 .. len(seq)-1+Tq-1`` (the first is typically the current
+        unprocessed ``seq.last_token``).  Returns logits [Tq, vocab].  Does NOT
+        modify the sequence; the caller commits with ``commit_verified``.
+        """
+        Tq = len(tokens)
+        base = len(seq) - 1
+        input_ids = torch.tensor(tokens, dtype=torch.int64, pin_memory=True).cuda(non_blocking=True)
+        positions = torch.arange(base, base + Tq, dtype=torch.int64,
+                                 pin_memory=True).cuda(non_blocking=True)
+        slot_mapping = torch.full((Tq,), -1, dtype=torch.int32,
+                                  pin_memory=True).cuda(non_blocking=True)
+        context_lens = torch.tensor([len(seq) + Tq], dtype=torch.int32,
+                                    pin_memory=True).cuda(non_blocking=True)
+        set_context(False, slot_mapping=slot_mapping, context_lens=context_lens,
+                    block_tables=None)
+        layers = [m for m in self.model.modules()
+                  if getattr(m, "sparse_rt", None) is not None]
+        for m in layers:
+            m.sparse_rt.verify_mode = True
+        try:
+            logits = self.model.compute_logits(self.model(input_ids, positions))
+        finally:
+            for m in layers:
+                m.sparse_rt.verify_mode = False
+            reset_context()
+        return logits
+
     def run(self, seqs: list[Sequence], is_prefill: bool) -> list[int]:
         input_ids, positions = self.prepare_prefill(seqs) if is_prefill else self.prepare_decode(seqs)
         temperatures = self.prepare_sample(seqs) if self.rank == 0 else None

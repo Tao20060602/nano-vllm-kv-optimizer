@@ -268,6 +268,8 @@ class M12LayerRuntime:
         self._pending_k = None
         self._pending_v = None
         self.last_verify_block_ids: torch.Tensor | None = None
+        # Set by ModelRunner.run_verify; Attention.forward routes to verify_tokens.
+        self.verify_mode = False
         # Rolling decode-query buffer for Q-window routing (GPU, latest last).
         self._q_window: list[torch.Tensor] = []
         self.use_index_select = cfg.use_index_select

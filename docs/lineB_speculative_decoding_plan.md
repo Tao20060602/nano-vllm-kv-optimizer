@@ -97,15 +97,46 @@ screen int8 did.
 - Step 3 TODO: speculative loop (greedy accept prefix + bonus; commit/rollback).
 - Step 4 TODO: quality screen (290-row RULER set) + TPOT/acceptance sweep.
 
+## First end-to-end result (2026-10-20, 8K niah_single row, greedy, K=4, window=8192)
+
+Same-process timing (prefill excluded), base vs spec:
+
+| arm | ms/token | rounds | tokens/pass | accept/proposal |
+|---|---:|---:|---:|---:|
+| baseline sparse decode | 126.2 | - | 1 | - |
+| speculative (K=4) | **124.8** | 8 | 2.88 | 0.47 |
+
+Breakdown per round: draft **175 ms**, verify **180 ms** (5 query tokens).
+The verification side works exactly as theorized: 5 tokens for 180 ms is
+**36 ms/token** vs 126 ms for a normal step, because one verify pass
+amortizes both the history H2D **and** the model-weight read. If the draft
+were free this would be ~1.6x. **The draft cost (175 ms/round, 35 ms/step)
+is the entire loss.**
+
+The hand-written transformer draft measured 18.9 ms/step standalone with
+SDPA at 8K, so there is a ~1.8x gap inside the loop that is not yet
+explained (likely contention/thermal/overhead). Closing it to ~10 ms/step
+would make the total ~ (50 + 180)/2.88 = 80 ms/token, ~1.6x.
+
+Generated token IDs were **identical** to the baseline on this row, so the
+shared-selection approximation did not change the answer here (1 row only;
+the 290-row quality screen is still required).
+
 ## Risks / open points
 
-- **Rollback**: `decode_multi` appends K tokens to the target CPU history and
-  updates sink/recent; rejected tokens must be rolled back exactly. Cleanest
-  is to commit history/recent only after acceptance, or snapshot and restore.
-- **Memory**: target 8 GB + draft 1.2 GB + draft window KV 0.46 GB + target
-  runtime 0.6 GB + activations ~2 GB ~= 12.3 GB, constant in context length
-  -> fits the 16 GB 3080 if measured peaks agree.
-- **Draft prefill**: the draft must prefill the prompt (0.6B over up to 128K
-  tokens) with the windowed KV; cost is a one-time prefill.
-- **Timing noise**: WSL; report paired fresh-process comparisons.
+- **Draft speed is the whole game.** Until the draft step drops well below
+  the per-round verify saving, speculative decoding is break-even. CUDA-graph
+  capture of the draft step (static padded cache) is the obvious next move.
+- **Quality**: the shared selection is approximate; run the 290-row RULER
+  screen before claiming anything. One row matched exactly.
+- **Window size matters**: at 4K window the 8K RULER draft acceptance was
+  3% (needle outside the window); at 8K it was 47%. Window >= task context
+  is needed for high acceptance, which raises draft KV to ~0.9 GB at 8K.
+- **Rollback**: implemented via deferred commit (`commit_verified`); the
+  target's CPU history only stores prefill tokens, so rejection only rolls
+  back the recent window and `valid_len`.
+- **Memory**: target sparse runtime ~9 GB + draft 1.2 GB + draft window KV
+  (0.9 GB at 8K) + activations; fits 16 GB at 8K but not at 64K+ with a
+  full-context window (hence the bounded window).
+- **Timing noise**: WSL; use paired fresh-process runs and several prompts.
 - **Scope**: greedy only; no temperature/rejection sampling in v1.

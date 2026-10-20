@@ -67,6 +67,8 @@ class Attention(nn.Module):
 
         # ---- M11 opt-in sparse path -------------------------------------
         if rt is not None and rt.enabled:
+            if getattr(rt, "verify_mode", False):
+                return rt.verify_tokens(q, k, v, q.device)
             assert q.shape[0] == (context.max_seqlen_q or q.shape[0]) or context.is_prefill
             if context.is_prefill:
                 if getattr(rt, "prefill_chunk", None) is not None and hasattr(rt, "prefill_first"):

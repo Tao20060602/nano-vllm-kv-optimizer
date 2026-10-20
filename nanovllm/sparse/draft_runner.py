@@ -21,7 +21,7 @@ class WindowedDraftRunner:
     def __init__(self, model_path: str, window: int = 4096,
                  device: str = "cuda", dtype: torch.dtype = torch.bfloat16):
         self.model = AutoModelForCausalLM.from_pretrained(
-            model_path, dtype=dtype, device_map=device)
+            model_path, dtype=dtype, attn_implementation="sdpa").to(device)
         self.model.eval()
         self.window = int(window)
         self.device = torch.device(device)
@@ -37,7 +37,8 @@ class WindowedDraftRunner:
         return int(self.cache.get_seq_length())
 
     def _trim(self) -> None:
-        if self._cache_len() <= self.window:
+        # Amortize the copy: trim only after exceeding the window by a margin.
+        if self._cache_len() <= self.window + 256:
             return
         for layer in self.cache.layers:
             k, v = layer.keys, layer.values
@@ -46,10 +47,9 @@ class WindowedDraftRunner:
                 layer.values = v[:, :, -self.window:, :].contiguous()
 
     @torch.no_grad()
-    def _step(self, token_id: int) -> torch.Tensor:
-        ids = torch.tensor([[int(token_id)]], device=self.device)
+    def _step_tensor(self, nxt: torch.Tensor) -> torch.Tensor:
         pos = torch.tensor([self.n_seen], device=self.device)
-        out = self.model(ids, past_key_values=self.cache, use_cache=True,
+        out = self.model(nxt, past_key_values=self.cache, use_cache=True,
                          cache_position=pos)
         self.cache = out.past_key_values
         self.n_seen += 1
@@ -74,14 +74,15 @@ class WindowedDraftRunner:
     @torch.no_grad()
     def propose(self, token_id: int, k: int) -> list[int]:
         """Feed ``token_id`` (the current prefix's last token) and propose k."""
-        logits = self._step(token_id)
-        props: list[int] = []
+        nxt = torch.tensor([[int(token_id)]], device=self.device)
+        logits = self._step_tensor(nxt)
+        collected = []
         for _ in range(k):
-            nxt = int(logits.argmax(-1).item())
-            props.append(nxt)
-            logits = self._step(nxt)
+            nxt = logits.argmax(-1, keepdim=True)
+            collected.append(nxt)
+            logits = self._step_tensor(nxt)
         self._last_k = k
-        return props
+        return torch.cat(collected, dim=1).tolist()[0]
 
     def commit(self, n_accepted: int) -> None:
         """Keep the accepted prefix; drop the unaccepted proposals."""
