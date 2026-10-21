@@ -226,6 +226,25 @@ shared one in these runs.
 The 290-row quality screen for the shared mode showed -0.75 points; the
 lossless mode is bit-identical by construction, so it supersedes it.
 
+## Long context: ring-buffer window (2026-10-21)
+
+The static cache is now a ring buffer over absolute positions
+(`slot_pos`, write at `pos % W`), with the mask
+`valid = (slot_pos >= 0) & (slot_pos <= pos) & (slot_pos > pos - W)`.
+Prefill is self-contained (chunked, chunk-causal, no HF model), so the draft
+no longer needs a second model in memory.
+
+16K single-needle row, lossless, K=4:
+
+| draft window | accept | tok/pass | ms/token | speedup | output |
+|---|---:|---:|---:|---:|---|
+| 8192 | 0.25 | 2.00 | 112.9 | 1.09x | identical |
+| 17408 | 0.47 | 2.89 | 81.5 | **1.52x** | identical (prefix) |
+
+The window is a memory/acceptance trade-off: a window smaller than the
+context keeps draft memory constant but loses acceptance; matching the
+context restores it at ~1.95 GB of cache. Baseline was 123.5 ms/token.
+
 ## Risks / open points
 
 - **Draft speed is the whole game.** Until the draft step drops well below
