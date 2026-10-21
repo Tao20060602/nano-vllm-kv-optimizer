@@ -42,7 +42,7 @@ def _rope(q: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor
 
 class StaticDraft:
     def __init__(self, model_path: str, window: int = 8192,
-                 device: str = "cuda"):
+                 device: str = "cuda", max_position: int = 131072):
         self.device = torch.device(device)
         self.window = int(window)
         cfg = __import__("json").load(open(f"{model_path}/config.json"))
@@ -76,23 +76,24 @@ class StaticDraft:
         self.Wd = [w(f"model.layers.{l}.mlp.down_proj.weight", True) for l in range(self.L)]
         self.norm_w = w("model.norm.weight")
 
-        # RoPE tables (absolute positions)
+        # RoPE tables (absolute positions, independent of the KV window)
         theta = float(cfg.get("rope_theta", 1e6))
         inv = 1.0 / (theta ** (torch.arange(0, self.D, 2, device=dev).float() / self.D))
-        t = torch.arange(self.window + 1, device=dev).float()
-        freqs = torch.outer(t, inv)                       # [W+1, D/2]
-        emb = torch.cat([freqs, freqs], dim=-1)           # [W+1, D]
+        t = torch.arange(max_position + 1, device=dev).float()
+        freqs = torch.outer(t, inv)                       # [max_pos+1, D/2]
+        emb = torch.cat([freqs, freqs], dim=-1)           # [max_pos+1, D]
         self.cos_tab = emb.cos().to(DTYPE)
         self.sin_tab = emb.sin().to(DTYPE)
 
-        # static KV cache and buffers
+        # static KV cache and buffers (ring buffer over absolute positions)
         self.kcache = torch.zeros(self.L, self.window, self.Hkv, self.D,
                                   dtype=DTYPE, device=dev)
         self.vcache = torch.zeros(self.L, self.window, self.Hkv, self.D,
                                   dtype=DTYPE, device=dev)
+        self.slot_pos = torch.full((self.window,), -1, dtype=torch.long, device=dev)
         self.in_id = torch.zeros(1, dtype=torch.long, device=dev)
         self.in_pos = torch.zeros(1, dtype=torch.long, device=dev)
-        self.cols = torch.arange(self.window, device=dev)
+        self.in_slot = torch.zeros(1, dtype=torch.long, device=dev)
         self.out_logits = torch.empty(1, self.embed.shape[0], dtype=DTYPE, device=dev)
         self.graph = None
         self._hf = None
@@ -108,10 +109,16 @@ class StaticDraft:
     # -- one token forward (capturable: static shapes/addresses) ----------
     def _forward(self) -> torch.Tensor:
         pos = self.in_pos                                   # [1] static tensor
+        slot = self.in_slot                                 # [1] absolute pos % W
         cos = self.cos_tab[pos].unsqueeze(1)                # [1,1,D]
         sin = self.sin_tab[pos].unsqueeze(1)
         x = self.embed[self.in_id]                          # [1, hidden]
-        mask = (self.cols > pos).view(1, 1, self.window)    # True = masked
+        # mark the current slot before computing the mask (self-visible)
+        self.slot_pos.index_copy_(0, slot, pos)
+        # a slot is visible iff its absolute position is in [pos-W+1, pos]
+        valid = ((self.slot_pos >= 0) & (self.slot_pos <= pos)
+                 & (self.slot_pos > (pos - self.window)))
+        mask = (~valid).view(1, 1, self.window)              # True = masked
         for l in range(self.L):
             h = _rmsnorm(x, self.ln1[l], self.eps)
             q = (h @ self.Wq[l]).view(1, self.Hq, self.D)
@@ -121,8 +128,8 @@ class StaticDraft:
             k = _rmsnorm(k, self.kn[l], self.eps)
             qr = _rope(q, cos, sin)                          # [1,Hq,D]
             kr = _rope(k, cos, sin)                          # [1,Hkv,D]
-            self.kcache[l].index_copy_(0, pos, kr)
-            self.vcache[l].index_copy_(0, pos, v)
+            self.kcache[l].index_copy_(0, slot, kr)
+            self.vcache[l].index_copy_(0, slot, v)
             qg = qr[0].view(self.Hkv, self.G, self.D)        # [Hkv,G,D]
             scores = torch.einsum("hgd,whd->hgw", qg, self.kcache[l]) * (self.D ** -0.5)
             scores = scores.masked_fill(mask, float("-inf"))
@@ -138,19 +145,96 @@ class StaticDraft:
         return self.out_logits
 
     # -- prefill via HF, then copy K/V into the static cache --------------
+    # -- batched prefill (no HF model; chunk-causal over the ring) --------
+    @torch.no_grad()
     def prefill(self, input_ids: torch.Tensor) -> torch.Tensor:
         T = int(input_ids.shape[1])
-        if T > self.window:
-            raise ValueError(f"prompt {T} > window {self.window} (v1 limitation)")
+        ids = input_ids.to(self.device)
+        self.kcache.zero_()
+        self.vcache.zero_()
+        self.slot_pos.fill_(-1)
+        C = 256
+        scale = self.D ** -0.5
+        for start in range(0, T, C):
+            end = min(T, start + C)
+            chunk = ids[:, start:end]
+            chunk_ids = ids[0, start:end]                          # [C]
+            pos = torch.arange(start, end, device=self.device)      # [C]
+            slots = pos % self.window
+            cos = self.cos_tab[start:end].unsqueeze(1)              # [C,1,D]
+            sin = self.sin_tab[start:end].unsqueeze(1)
+            self.slot_pos[slots] = pos
+            sp = self.slot_pos                                     # [W] abs positions
+            valid = ((sp >= 0) & (sp <= pos[:, None])
+                     & (sp > (pos[:, None] - self.window)))         # [C, W]
+            x = self.embed[chunk_ids]                              # [C, hidden]
+            Cc = x.shape[0]
+            for l in range(self.L):
+                h = _rmsnorm(x, self.ln1[l], self.eps)
+                q = (h @ self.Wq[l]).view(Cc, self.Hq, self.D)
+                k = (h @ self.Wk[l]).view(Cc, self.Hkv, self.D)
+                v = (h @ self.Wv[l]).view(Cc, self.Hkv, self.D)
+                q = _rmsnorm(q, self.qn[l], self.eps)
+                k = _rmsnorm(k, self.kn[l], self.eps)
+                qr = _rope(q, cos, sin)                            # [C,Hq,D]
+                kr = _rope(k, cos, sin)                            # [C,Hkv,D]
+                self.kcache[l].index_copy_(0, slots, kr)
+                self.vcache[l].index_copy_(0, slots, v)
+                o = torch.empty(Cc, self.Hq, self.D,
+                                dtype=DTYPE, device=self.device)
+                for hh in range(self.Hkv):
+                    qh = qr[:, hh * self.G:(hh + 1) * self.G, :]   # [C,G,D]
+                    Kh = self.kcache[l][:, hh, :]                  # [W,D]
+                    Vh = self.vcache[l][:, hh, :]
+                    sc = torch.einsum("cgd,wd->cgw", qh, Kh) * scale
+                    sc = sc.masked_fill(~valid[:, None, :], float("-inf"))
+                    at = torch.softmax(sc.float(), dim=-1).to(DTYPE)
+                    o[:, hh * self.G:(hh + 1) * self.G, :] = torch.einsum(
+                        "cgw,wd->cgd", at, Vh)
+                o = o.reshape(Cc, self.Hq * self.D)
+                x = x + o @ self.Wo[l]
+                h = _rmsnorm(x, self.ln2[l], self.eps)
+                mlp = F.silu(h @ self.Wg[l]) * (h @ self.Wu[l])
+                x = x + mlp @ self.Wd[l]
+        self.in_pos.fill_(T - 1)
+        self.in_slot.fill_((T - 1) % self.window)
+        self.in_id.fill_(int(input_ids[0, -1]))
+        return None
+
+    def _hf_prefill(self, input_ids: torch.Tensor) -> torch.Tensor:
+        """Legacy HF-based prefill (kept for reference/parity tests)."""
+        T = int(input_ids.shape[1])
+        ids = input_ids.to(self.device)
         hf = self._hf_model()
+        from transformers import DynamicCache
+        cache = DynamicCache()
+        CH = 2048
         with torch.no_grad():
-            out = hf(input_ids.to(self.device), use_cache=True, logits_to_keep=1)
-        cache = out.past_key_values
+            for start in range(0, T, CH):
+                end = min(T, start + CH)
+                pos = torch.arange(start, end, device=self.device)
+                out = hf(ids[:, start:end], past_key_values=cache, use_cache=True,
+                         cache_position=pos, logits_to_keep=1)
+                cache = out.past_key_values
+                excess = cache.get_seq_length() - self.window
+                if excess > 0:
+                    for layer in cache.layers:
+                        layer.keys = layer.keys[:, :, excess:, :].contiguous()
+                        layer.values = layer.values[:, :, excess:, :].contiguous()
+                del out
+        Lc = cache.get_seq_length()
+        base = T - Lc
+        self.kcache.zero_()
+        self.vcache.zero_()
+        self.slot_pos.fill_(-1)
+        slots = (torch.arange(base, T, device=self.device) % self.window)
         for l in range(self.L):
-            self.kcache[l, :T].copy_(cache.layers[l].keys[0].transpose(0, 1))
-            self.vcache[l, :T].copy_(cache.layers[l].values[0].transpose(0, 1))
-        del cache, out
-        self.in_pos.fill_(T - 1)       # position of the last prompt token
+            self.kcache[l][slots] = cache.layers[l].keys[0].transpose(0, 1)
+            self.vcache[l][slots] = cache.layers[l].values[0].transpose(0, 1)
+        del cache
+        self.slot_pos[slots] = torch.arange(base, T, device=self.device)
+        self.in_pos.fill_(T - 1)
+        self.in_slot.fill_((T - 1) % self.window)
         self.in_id.fill_(int(input_ids[0, -1]))
         return None
 
@@ -167,6 +251,7 @@ class StaticDraft:
     def step(self, token_id: int, pos: int) -> torch.Tensor:
         self.in_id.fill_(int(token_id))
         self.in_pos.fill_(int(pos))
+        self.in_slot.fill_(int(pos) % self.window)
         if self.graph is not None:
             self.graph.replay()
         else:
