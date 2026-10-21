@@ -99,10 +99,14 @@ Measured multi-prompt (30 rows, 3 tasks, 8K, greedy, paired):
 | **int8 + speculative (K=5)** | **59.2** | **2.15x** |
 
 Speculative on top of int8: **1.54x mean / 1.49x median / min 1.00x** (0/30
-rows slower). Verify drops to 122 ms/round with int8 (from ~160). Quality:
-the shared-selection approximation costs **-0.75 RULER points** on the 290-row
-screen; int8 alone was neutral. The combination's quality was not re-screened
-(the two effects were measured separately). The draft engine is a
+rows slower). Verify drops to 122 ms/round with int8 (from ~160). At **16K**
+the same config (window 17408) gives **1.19x mean** (single-needle 1.44x,
+multikey 0.94x; 8/20 rows slower) - long context is weaker. Quality: the
+combined stack (int8 + shared speculation) is **aggregate-neutral to slightly
+positive** on the 290-row screen (+0.5 points vs bf16, 21/290 rows changed,
+11 improved / 10 worsened); it is **not lossless** (~7% of rows shift, both
+directions). Fused selector/dequant kernels were tested in the speculative
+loop and gave **no gain** (6% slower on average). The draft engine is a
 hand-written static-shape Qwen3 forward captured as a CUDA graph (~10 ms/step
 vs ~25 ms transformers).
 

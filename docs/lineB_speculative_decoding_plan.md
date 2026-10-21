@@ -325,6 +325,52 @@ Verify drops to 122 ms/round (from ~160 bf16) because int8 halves the H2D.
 Caveat: the combined quality was not re-screened; int8 was neutral and the
 shared selection costs -0.75 points separately.
 
+## Combined quality: int8 + shared spec (K=5, 290 rows, 2026-10-21)
+
+| comparison | 8k multikey | 8k single | 8k vt | 16k multikey | 16k single | aggregate |
+|---|---:|---:|---:|---:|---:|---:|
+| vs int8 baseline | +2.0 | 0 | +1.0 | -5.0 | 0 | **+0.2** |
+| vs bf16 baseline | +2.0 | 0 | +0.6 | -2.5 | 0 | **+0.5** |
+
+Rows with a changed score: 24/290 vs int8 (10 improved, 14 worsened) and
+21/290 vs bf16 (11 improved, 10 worsened). Token-identical: 31% / 28%.
+
+Read: the full stack (int8 history + shared-selection speculation) is
+**aggregate-neutral to slightly positive** on this screen, with per-task
+swings (16k multikey -2.5 to -5, 8k multikey +2). It is **not lossless**:
+~7-8% of rows change score, balanced in both directions.
+
+## 16K multi-prompt (int8 + shared spec, K=5, window 17408, 20 rows)
+
+| task | rows | mean | min | max |
+|---|---:|---:|---:|---:|
+| 16k single | 10 | **1.44x** | 1.02 | 2.17 |
+| 16k multikey | 10 | 0.94x | 0.74 | 1.36 |
+| total | 20 | **1.19x** | 0.74 | 2.17 |
+
+8/20 rows slower. Acceptance 0.37, 2.86 tokens/pass; draft 69 ms/round (larger
+window), verify 134 ms. Matching the window restores single-needle speedup,
+but the hard multikey task is not helped (the sparse target itself is weak
+there: 25-30%).
+
+## Fused selector/dequant in the speculative loop (negative)
+
+A/B on 3 rows (int8 + shared spec, K=5): enabling `sparse_fused_selector` and
+`sparse_fused_dequant` was **6% slower on average** (8k single +6.7%, 8k vt
++15%, 8k multikey -1.2%); verify went from 155 to 170 ms on single. The fused
+kernels help standalone selector CPU time but not the verify critical path.
+
+## Future directions (not implemented)
+
+- **Model weight quantization (4-bit)**: would free ~6 GB and cut the
+  per-step weight read, but the engine's matmuls are hand-written bf16; it
+  needs 4-bit dequant+GEMM kernels (a separate operator project).
+- **Draft distillation (DistillSpec)**: fine-tune Qwen3-0.6B (LoRA) on the
+  4B's greedy outputs to raise acceptance (currently 0.37-0.49). Needs a
+  training run; could plausibly add 10-20% speedup.
+- **32K**: draft window would need ~3.9 GB of cache; likely too tight on
+  16 GB alongside the target.
+
 ## Risks / open points
 
 - **Draft speed is the whole game.** Until the draft step drops well below
