@@ -149,6 +149,9 @@ class StaticDraft:
     @torch.no_grad()
     def prefill(self, input_ids: torch.Tensor) -> torch.Tensor:
         T = int(input_ids.shape[1])
+        if T > self.cos_tab.shape[0]:
+            raise ValueError(f"prompt {T} exceeds RoPE table "
+                             f"({self.cos_tab.shape[0]})")
         ids = input_ids.to(self.device)
         self.kcache.zero_()
         self.vcache.zero_()
@@ -249,6 +252,9 @@ class StaticDraft:
 
     @torch.no_grad()
     def step(self, token_id: int, pos: int) -> torch.Tensor:
+        if not 0 <= int(pos) < self.cos_tab.shape[0]:
+            raise ValueError(f"position {pos} outside RoPE table "
+                             f"(max {self.cos_tab.shape[0] - 1})")
         self.in_id.fill_(int(token_id))
         self.in_pos.fill_(int(pos))
         self.in_slot.fill_(int(pos) % self.window)
