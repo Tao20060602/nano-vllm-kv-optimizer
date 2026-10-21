@@ -63,12 +63,37 @@ Experiment details: [M16](docs/m16_dynamic_topk_results.md),
 [M19](docs/m19_selector_graph_results.md),
 [M20](docs/m20_gather_results.md),
 [M21](docs/m21_selector_static_mask_results.md), the
-[Line A routing diagnosis](docs/lineA_routing_diagnosis.md), and
-[Line A int8 CPU-KV quantization](docs/lineA_quant_kv.md).
+[Line A routing diagnosis](docs/lineA_routing_diagnosis.md),
+[Line A int8 CPU-KV quantization](docs/lineA_quant_kv.md), and the
+[Line B speculative decoding plan/results](docs/lineB_speculative_decoding_plan.md).
 
 For the full Chinese decision history—from prefix reuse and graph retrieval
 to the final optimizations, failed candidates, quality gaps and handoff—read
 [project history and handoff](docs/NANOKV_PROJECT_HISTORY_AND_HANDOFF.md).
+
+## Line B: speculative decoding (experimental, opt-in)
+
+A greedy, **lossless** speculative decoder on top of the sparse path: a
+Qwen3-0.6B draft with a bounded/ring KV window proposes K tokens, the target
+verifies K+1 tokens in one sparse pass (per-query block selection + union +
+per-query mask), and only the accepted prefix is committed. Output token IDs
+are identical to non-speculative sparse decoding.
+
+Recommended configuration (RTX 3080 Laptop 16 GB, 8K/16K single-needle,
+greedy):
+
+| setting | value | note |
+|---|---|---|
+| K (draft tokens) | **5** | best of {2,3,4,5,6,8}; ~1.97x at 8K |
+| draft KV window | **match the task context** when it fits | 8192 at 8K, 17408 at 16K |
+| union buffer | `verify_union_blocks = (K+1)*32 = 192` | ~1.8 GB |
+| verification | lossless (`verify_lossless=True`) | shared selection loses ~0.75 RULER points |
+
+Measured: 8K **1.97x** (64.6 vs 127.5 ms/token), 16K **1.52x** with a 17408
+window (a window smaller than the context drops acceptance and the speedup to
+~1.1x). Adaptive K was tested and did **not** beat fixed K=5. The draft engine
+is a hand-written static-shape Qwen3 forward captured as a CUDA graph
+(~9.8 ms/step vs ~25 ms for the transformers draft).
 
 ### Final quality evidence (M22)
 

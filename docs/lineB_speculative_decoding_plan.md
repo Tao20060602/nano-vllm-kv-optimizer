@@ -11,6 +11,18 @@ same history is transferred once for K verified tokens instead of K times.
 With a greedy target the output is bit-identical to non-speculative decoding
 (lossless), unlike int8 quantization.
 
+## Recommended configuration (measured)
+
+| setting | value |
+|---|---|
+| K | 5 |
+| draft window | match the task context when it fits (8192 @ 8K, 17408 @ 16K) |
+| union buffer | `verify_union_blocks = (K+1)*32 = 192` (~1.8 GB) |
+| verification | lossless (per-query selection + union + per-query mask) |
+| draft engine | `StaticDraft` (static-shape Qwen3 + CUDA graph) |
+
+8K: 1.97x (64.6 vs 127.5 ms/token). 16K: 1.52x with a 17408 window.
+
 ## Design
 
 - **Target** Qwen3-4B with the existing sparse CPU-offload runtime, extended
