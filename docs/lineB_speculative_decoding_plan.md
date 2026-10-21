@@ -211,16 +211,17 @@ after prefill restores the target speed.
 
 ## Final end-to-end results (8K, K=4, window 8192, greedy)
 
+Paired fresh-process measurement (base, spec, spec, base):
+
 | arm | ms/token | speedup | tokens vs baseline |
 |---|---:|---:|---|
-| baseline sparse | 127.5 | 1.00x | - |
-| speculative, lossless | 77.3 / 85.3 | **1.65x / 1.49x** | **identical** |
+| baseline sparse | 131.6 / 126.9 (mean 129.2) | 1.00x | - |
+| **speculative, lossless** | **84.3 / 83.5 (mean 83.9)** | **1.53x / 1.55x** | **identical** |
 | speculative, shared (approx.) | 90.5 / 93.1 | 1.41x / 1.37x | identical on this row |
 
 Round breakdown (lossless): draft 39 ms, verify 178-202 ms, 2.88 tokens/pass,
-47% acceptance. The lossless variant is both quality-safe and (in these runs)
-faster than the shared one, because its verify is cheaper than the
-memory-pressured shared runs.
+47% acceptance. The lossless variant is both quality-safe and faster than the
+shared one in these runs.
 
 The 290-row quality screen for the shared mode showed -0.75 points; the
 lossless mode is bit-identical by construction, so it supersedes it.
