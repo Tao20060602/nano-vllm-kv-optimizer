@@ -264,6 +264,25 @@ should raise K when acceptance is high and lower it when the draft window is
 smaller than the context (16K with an 8K window gave accept 0.25 and only
 1.09x).
 
+## Adaptive K (2026-10-21): negative result
+
+Policy tested: EMA of per-round acceptance (`p_hat = 0.7*p_hat + 0.3*a/k`,
+init 0.5), K chosen from {2,3,4,5} by thresholds 0.25/0.35/0.45.
+
+| scenario | policy | ms/token | speedup | mean K |
+|---|---|---:|---:|---:|
+| 8K | fixed K=5 | **64.6** | **1.97x** | 5.0 |
+| 8K | adaptive | 82.5 | 1.55x | 4.11 |
+| 16K, w=8192 | fixed K=4 | 108.4 | 1.14x | 4.0 |
+| 16K, w=8192 | adaptive | 109.8 | 1.12x | 3.33 |
+| 16K, w=8192 | fixed K=2 | 116.2 | 1.06x | 2.0 |
+
+The simple EMA/threshold policy is **not better than the best fixed K**:
+short generations (~8 rounds) make the acceptance estimate noisy and the
+policy oscillates; at 8K the optimum is already fixed K=5, and at 16K with an
+8K window K=4 was already optimal. Recommendation: **use fixed K=5** and
+size the union buffer for it (`verify_union_blocks = 6*32 = 192`, ~1.8 GB).
+
 ## Risks / open points
 
 - **Draft speed is the whole game.** Until the draft step drops well below
