@@ -79,21 +79,24 @@ verifies K+1 tokens in one sparse pass (per-query block selection + union +
 per-query mask), and only the accepted prefix is committed. Output token IDs
 are identical to non-speculative sparse decoding.
 
-Recommended configuration (RTX 3080 Laptop 16 GB, 8K/16K single-needle,
-greedy):
+Recommended configuration (RTX 3080 Laptop 16 GB, greedy, 30 rows x 3 tasks
+at 8K):
 
 | setting | value | note |
 |---|---|---|
-| K (draft tokens) | **5** | best of {2,3,4,5,6,8}; ~1.97x at 8K |
+| K (draft tokens) | **5** | best of {2,3,4,5,6,8} |
 | draft KV window | **match the task context** when it fits | 8192 at 8K, 17408 at 16K |
-| union buffer | `verify_union_blocks = (K+1)*32 = 192` | ~1.8 GB |
-| verification | lossless (`verify_lossless=True`) | shared selection loses ~0.75 RULER points |
+| verification | **shared selection (approximate)** for speed | mean **1.63x**, 0/30 rows slower |
+| | lossless (per-query union + mask) for quality | 0.89x (slower; union is 2-2.5x top_k) |
+| union buffer | `verify_union_blocks = (K+1)*32 = 192` | only needed for lossless (~1.8 GB) |
 
-Measured: 8K **1.97x** (64.6 vs 127.5 ms/token), 16K **1.52x** with a 17408
-window (a window smaller than the context drops acceptance and the speedup to
-~1.1x). Adaptive K was tested and did **not** beat fixed K=5. The draft engine
-is a hand-written static-shape Qwen3 forward captured as a CUDA graph
-(~9.8 ms/step vs ~25 ms for the transformers draft).
+Measured speed (multi-prompt, paired): shared **1.63x mean / 1.60x median /
+min 1.15x**, all 30 rows faster; lossless 0.89x mean (23/30 slower) because
+the per-query union makes gather/H2D/attention 2-2.5x more expensive.
+Quality: the shared mode costs **-0.75 RULER points** on the 290-row screen
+(79.1 -> 78.4, 13 worsened / 7 improved); lossless is bit-identical (up to
+fp reduction order). The draft engine is a hand-written static-shape Qwen3
+forward captured as a CUDA graph (~10 ms/step vs ~25 ms transformers).
 
 ### Final quality evidence (M22)
 

@@ -11,17 +11,27 @@ same history is transferred once for K verified tokens instead of K times.
 With a greedy target the output is bit-identical to non-speculative decoding
 (lossless), unlike int8 quantization.
 
-## Recommended configuration (measured)
+## Recommended configuration (measured, multi-prompt)
 
 | setting | value |
 |---|---|
 | K | 5 |
 | draft window | match the task context when it fits (8192 @ 8K, 17408 @ 16K) |
-| union buffer | `verify_union_blocks = (K+1)*32 = 192` (~1.8 GB) |
-| verification | lossless (per-query selection + union + per-query mask) |
-| draft engine | `StaticDraft` (static-shape Qwen3 + CUDA graph) |
+| verification | **shared selection (approximate)** for speed |
+| | lossless (per-query union + mask) only if bit-identical output is required |
+| union buffer | `verify_union_blocks = (K+1)*32 = 192` (only needed for lossless, ~1.8 GB) |
 
-8K: 1.97x (64.6 vs 127.5 ms/token). 16K: 1.52x with a 17408 window.
+Multi-prompt (30 rows, 3 tasks, 8K, greedy, paired):
+
+| mode | mean | median | min | max | rows < 1x | quality |
+|---|---:|---:|---:|---:|---:|---|
+| shared (approx.) | **1.63x** | 1.60x | 1.15x | 2.57x | **0/30** | -0.75 pts |
+| lossless | 0.89x | 0.89x | 0.65x | 1.24x | 23/30 | bit-identical |
+
+Why lossless is slower: the union over 6 verification queries is 66-80 blocks
+(2-2.5x top_k), so gather, H2D and the masked attention all grow; verify costs
+~290 ms/round vs ~160 ms for the shared mode. The earlier single-prompt 1.97x
+lossless number was an outlier with an unusually small union.
 
 ## Design
 
@@ -222,6 +232,10 @@ was measured to slow the target verify (293 vs ~200 ms/round); dropping it
 after prefill restores the target speed.
 
 ## Final end-to-end results (8K, K=4, window 8192, greedy)
+
+> **Superseded by the multi-prompt validation above (2026-10-21).** The
+> single-prompt numbers below were outliers; on 30 rows the lossless mode is
+> 0.89x and only the shared/approximate mode is a consistent win (1.63x).
 
 Paired fresh-process measurement (base, spec, spec, base):
 
