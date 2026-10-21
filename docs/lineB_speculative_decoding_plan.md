@@ -245,6 +245,25 @@ The window is a memory/acceptance trade-off: a window smaller than the
 context keeps draft memory constant but loses acceptance; matching the
 context restores it at ~1.95 GB of cache. Baseline was 123.5 ms/token.
 
+## K sweep at 8K (lossless, static draft, 24-32 tokens)
+
+| K | ms/token | speedup vs 127.5 | tokens/pass |
+|---:|---:|---:|---:|
+| 2 | 83.4 | 1.53x | 2.18 |
+| 3 | 71.1 | 1.79x | 2.89 |
+| 4 | 74.0 | 1.72x | 2.88 |
+| 5 | **64.6** | **1.97x** | **3.43** |
+
+Larger K keeps helping at ~50% acceptance because the verify pass amortizes
+both the H2D and the weight read; the draft step is only ~10 ms. K=6/8 could
+not be measured: the union buffer grows to 2.1-2.7 GB (union blocks =
+(K+1)*32) and the GPU entered a fault state during those attempts.
+
+This suggests the default K should be larger than 4, and that adaptive K
+should raise K when acceptance is high and lower it when the draft window is
+smaller than the context (16K with an 8K window gave accept 0.25 and only
+1.09x).
+
 ## Risks / open points
 
 - **Draft speed is the whole game.** Until the draft step drops well below
