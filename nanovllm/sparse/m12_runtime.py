@@ -343,7 +343,6 @@ class M12LayerRuntime:
         self._pending_k = None
         self._pending_v = None
         self.last_verify_block_ids = None
-        self.verify_lossless = False
         self._clear_selector_graph()
         self._clear_selector_static_mask()
         self.selector_graph_setup_ms = 0.0
