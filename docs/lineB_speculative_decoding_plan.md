@@ -188,6 +188,43 @@ at WSL launch cost explains the gap. CUDA-graph capture of one draft step is
 the lever: ~5-8 ms/step would put the draft at 30-40 ms/round and the total
 at ~1.3x (lossless ~1.15-1.2x).
 
+## Static-graph draft engine (2026-10-20)
+
+`nanovllm/sparse/static_draft.py` implements a minimal Qwen3-0.6B forward
+with a **preallocated static KV cache**, captured once with
+`torch.cuda.CUDAGraph`:
+
+- cache `[layers, window, kv_heads, head_dim]`, written at index `pos`;
+- attention over the full window with a mask `arange(W) > pos` (pos is a
+  static tensor, so the shape/addresses never change);
+- static input/output buffers; one graph replay per token;
+- prefill runs once through HF (`logits_to_keep=1` to avoid materializing
+  8K x 151936 logits) and copies its K/V into the static cache.
+
+Verified against HF greedy: 10/10 tokens identical on a 401-token prompt.
+Step time: **9.8 ms** including the argmax sync (vs ~25 ms for the
+transformers draft), i.e. ~2.5x faster.
+
+Note: keeping the HF model resident for repeated prefills costs 1.2 GB and
+was measured to slow the target verify (293 vs ~200 ms/round); dropping it
+after prefill restores the target speed.
+
+## Final end-to-end results (8K, K=4, window 8192, greedy)
+
+| arm | ms/token | speedup | tokens vs baseline |
+|---|---:|---:|---|
+| baseline sparse | 127.5 | 1.00x | - |
+| speculative, lossless | 77.3 / 85.3 | **1.65x / 1.49x** | **identical** |
+| speculative, shared (approx.) | 90.5 / 93.1 | 1.41x / 1.37x | identical on this row |
+
+Round breakdown (lossless): draft 39 ms, verify 178-202 ms, 2.88 tokens/pass,
+47% acceptance. The lossless variant is both quality-safe and (in these runs)
+faster than the shared one, because its verify is cheaper than the
+memory-pressured shared runs.
+
+The 290-row quality screen for the shared mode showed -0.75 points; the
+lossless mode is bit-identical by construction, so it supersedes it.
+
 ## Risks / open points
 
 - **Draft speed is the whole game.** Until the draft step drops well below
