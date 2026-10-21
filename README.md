@@ -84,19 +84,27 @@ at 8K):
 
 | setting | value | note |
 |---|---|---|
+| history quantization | **int8** (Line A) | halves H2D; quality-neutral on 290 rows |
 | K (draft tokens) | **5** | best of {2,3,4,5,6,8} |
 | draft KV window | **match the task context** when it fits | 8192 at 8K, 17408 at 16K |
-| verification | **shared selection (approximate)** for speed | mean **1.63x**, 0/30 rows slower |
-| | lossless (per-query union + mask) for quality | 0.89x (slower; union is 2-2.5x top_k) |
-| union buffer | `verify_union_blocks = (K+1)*32 = 192` | only needed for lossless (~1.8 GB) |
+| verification | **shared selection (approximate)** | mean 1.54x on top of int8 |
+| | lossless (per-query union + mask) | quality-safe but 0.89x (union cost) |
 
-Measured speed (multi-prompt, paired): shared **1.63x mean / 1.60x median /
-min 1.15x**, all 30 rows faster; lossless 0.89x mean (23/30 slower) because
-the per-query union makes gather/H2D/attention 2-2.5x more expensive.
-Quality: the shared mode costs **-0.75 RULER points** on the 290-row screen
-(79.1 -> 78.4, 13 worsened / 7 improved); lossless is bit-identical (up to
-fp reduction order). The draft engine is a hand-written static-shape Qwen3
-forward captured as a CUDA graph (~10 ms/step vs ~25 ms transformers).
+Measured multi-prompt (30 rows, 3 tasks, 8K, greedy, paired):
+
+| config | ms/token | vs bf16 baseline |
+|---|---:|---:|
+| bf16 sparse baseline | 127.5 | 1.00x |
+| int8 history | 87.6 | 1.46x |
+| **int8 + speculative (K=5)** | **59.2** | **2.15x** |
+
+Speculative on top of int8: **1.54x mean / 1.49x median / min 1.00x** (0/30
+rows slower). Verify drops to 122 ms/round with int8 (from ~160). Quality:
+the shared-selection approximation costs **-0.75 RULER points** on the 290-row
+screen; int8 alone was neutral. The combination's quality was not re-screened
+(the two effects were measured separately). The draft engine is a
+hand-written static-shape Qwen3 forward captured as a CUDA graph (~10 ms/step
+vs ~25 ms transformers).
 
 ### Final quality evidence (M22)
 

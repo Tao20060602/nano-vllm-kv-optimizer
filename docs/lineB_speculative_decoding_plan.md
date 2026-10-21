@@ -309,6 +309,22 @@ policy oscillates; at 8K the optimum is already fixed K=5, and at 16K with an
 8K window K=4 was already optimal. Recommendation: **use fixed K=5** and
 size the union buffer for it (`verify_union_blocks = 6*32 = 192`, ~1.8 GB).
 
+## int8 + speculative (final optimized config, 2026-10-21)
+
+Combining Line A (int8 history) with the shared-selection speculative decoder
+(K=5), 30 rows / 3 tasks / 8K / greedy, paired:
+
+| config | ms/token | vs bf16 baseline | vs int8 |
+|---|---:|---:|---:|
+| bf16 sparse baseline | 127.5 | 1.00x | - |
+| int8 history | 87.6 | 1.46x | 1.00x |
+| **int8 + spec (K=5)** | **59.2** | **2.15x** | **1.54x** |
+
+Spec on top of int8: mean 1.54x, median 1.49x, min 1.00x (0/30 rows slower).
+Verify drops to 122 ms/round (from ~160 bf16) because int8 halves the H2D.
+Caveat: the combined quality was not re-screened; int8 was neutral and the
+shared selection costs -0.75 points separately.
+
 ## Risks / open points
 
 - **Draft speed is the whole game.** Until the draft step drops well below
