@@ -371,6 +371,20 @@ kernels help standalone selector CPU time but not the verify critical path.
 - **32K**: draft window would need ~3.9 GB of cache; likely too tight on
   16 GB alongside the target.
 
+## Proposer abstraction + n-gram (2026-10-22)
+
+`nanovllm/sparse/proposers.py` adds a pluggable interface:
+
+    prefill(input_ids) / propose(last_token, k, pos) / note_accepted(tokens)
+
+Implementations: `DraftModelProposer` (the static Qwen3-0.6B engine) and
+`NgramProposer` (prompt lookup, no model, zero GPU).
+
+3 RULER rows (int8 + shared spec, K=5): n-gram acceptance 0.0-0.9 but only
+**1.0-1.5 tokens/pass** because 4-gram matches have short continuations, so
+94-170 ms/token vs 47-61 ms for the draft model. N-gram is a zero-GPU
+fallback for repetitive/RAG text, not a speed win on these prompts.
+
 ## Risks / open points
 
 - **Draft speed is the whole game.** Until the draft step drops well below
