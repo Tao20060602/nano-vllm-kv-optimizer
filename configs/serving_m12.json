@@ -1,0 +1,27 @@
+{
+  "enforce_eager": true,
+  "tensor_parallel_size": 1,
+  "max_num_seqs": 1,
+  "max_model_len": 131072,
+  "max_num_batched_tokens": 4096,
+  "kvcache_block_size": 256,
+  "gpu_memory_utilization": 0.9,
+  "enable_sparse_attention": true,
+  "use_m12_runtime": true,
+  "sparse_selector": "query_guided",
+  "sparse_retrieval_block_size": 64,
+  "sparse_num_representatives": 4,
+  "sparse_top_k": 32,
+  "sparse_first_tokens": 64,
+  "sparse_recent_tokens": 512,
+  "sparse_prefill_chunk_size": 4096,
+  "sparse_prefill_attention_backend": "flash",
+  "sparse_gather_index_select": true,
+  "sparse_quant_history": false,
+  "sparse_fused_dequant": false,
+  "rope_scaling_override": {
+    "rope_type": "yarn",
+    "factor": 4.0,
+    "original_max_position_embeddings": 32768
+  }
+}
